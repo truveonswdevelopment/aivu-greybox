@@ -1,0 +1,43 @@
+# macOS metadata
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+*.egg
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Local development
+.env
+*.local
+
+# Bulk simulation outputs — per Working Preferences Addendum 2026-05-13.
+# Multi-MB JSON trajectories, rendered chart PNGs, and similar artifacts
+# go to Google Drive, not GitHub. Engagement folders point at the off-repo
+# location via their own data/README.md.
+*.parquet
+data/raw/
+data/outputs/
