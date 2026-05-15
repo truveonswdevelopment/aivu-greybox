@@ -68,12 +68,12 @@ from aivu_greybox.psychrometrics import (
 # Order: (R_opaque, U_fenestration, C_house, C_stack, C_wind, C_w,
 #         ceiling_coupling_factor)
 
-THETA_TRUE_V752: np.ndarray = np.array([1.0, 1.0, 5.0e6, 0.5, 0.1, 50.0, 0.75])
+THETA_TRUE_V752: np.ndarray = np.array([1.0, 1.0, 5.0e6, 1.0, 1.0, 50.0, 0.75])
 
 # Tight prior σ's for the §6 tests that use a "Day-2-posterior-like" prior
 # centered at θ_true. Narrower than the ACCA Manual J fallback prior because
 # §5 has already constrained the parameters.
-TIGHT_PRIOR_SIGMAS: np.ndarray = np.array([0.10, 0.10, 5e5, 0.10, 0.05, 10.0, 0.15])
+TIGHT_PRIOR_SIGMAS: np.ndarray = np.array([0.10, 0.10, 5e5, 0.05, 0.05, 10.0, 0.15])
 
 
 # ---------------------------------------------------------------------------

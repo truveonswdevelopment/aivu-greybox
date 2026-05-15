@@ -84,7 +84,7 @@ from aivu_greybox.psychrometrics import (
 #   ceiling_coupling_factor  = 0.75  per AOT §3.2 placeholder
 #
 # Module-level constant for reuse across tests.
-THETA_TRUE_V752: np.ndarray = np.array([1.0, 1.0, 5.0e6, 0.5, 0.1, 50.0, 0.75])
+THETA_TRUE_V752: np.ndarray = np.array([1.0, 1.0, 5.0e6, 1.0, 1.0, 50.0, 0.75])
 
 
 def _make_synthetic_weather(n_samples: int, seed: int = 0) -> tuple:

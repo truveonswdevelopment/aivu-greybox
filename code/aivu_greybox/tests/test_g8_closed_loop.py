@@ -99,7 +99,7 @@ from aivu_greybox.real_chain import RealForwardChain
 #   ceiling_coupling_factor = 0.85   (+0.4σ — modest as-built bypass paths)
 
 THETA_TRUE_PERTURBED: np.ndarray = np.array(
-    [1.10, 0.95, 4.5e6, 0.55, 0.085, 45.0, 0.85]
+    [1.10, 0.95, 4.5e6, 1.05, 1.15, 45.0, 0.85]
 )
 
 

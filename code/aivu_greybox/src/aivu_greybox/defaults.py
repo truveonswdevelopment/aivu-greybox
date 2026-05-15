@@ -201,7 +201,7 @@ EXPECTED_TIGHTNESS_SIGMA_OVER_MU: dict[str, float] = {
     "U_fenestration": 0.07,
     "C_house": 0.05,
     "C_stack": 0.20,
-    "C_wind": 0.35,
+    "C_wind": 0.40,
     "C_w": 0.25,
     "ceiling_coupling_factor": 0.15,
 }

@@ -113,21 +113,24 @@ def make_acca_manual_j_fallback_prior(provenance_hash: str = "") -> Prior7D:
     # R_opaque                 = 1.0   (dimensionless multiplier on nameplate opaque U·A)
     # U_fenestration           = 1.0   (dimensionless multiplier on nameplate fenestration U·A)
     # C_house                  = 5e6   J/K (whole-house sensible capacitance)
-    # C_stack                  = 0.5   stack-driven operational-infiltration coefficient
-    #                                  (provisional; awaits Sherman-Grimsrud-derived value
-    #                                  from §11.2 amendment companion derivation)
-    # C_wind                   = 0.1   wind-driven operational-infiltration coefficient
-    #                                  (provisional; same as above)
+    # C_stack                  = 1.0   dimensionless multiplier on ASHRAE Sherman-Grimsrud
+    #                                  stack coefficient (Phase 1's C_S_STACK = 1.45e-4,
+    #                                  HoF Ch. 16 Table 6, 1-story residential). 1.0 = nominal.
+    # C_wind                   = 1.0   dimensionless multiplier on ASHRAE Sherman-Grimsrud
+    #                                  wind coefficient (Phase 1's C_W_WIND = 1.74e-4,
+    #                                  HoF Ch. 16 Table 6 shelter class 3). 1.0 = nominal.
     # C_w                      = 50    latent moisture capacitance proxy
     # ceiling_coupling_factor  = 0.75  per AOT §3.2 placeholder (unchanged from v0.1)
-    mean = np.array([1.0, 1.0, 5.0e6, 0.5, 0.1, 50.0, 0.75])
+    mean = np.array([1.0, 1.0, 5.0e6, 1.0, 1.0, 50.0, 0.75])
 
     # Marginal standard deviations per §11.2 amendment table.
     # σ widths chosen to span the expected as-built deviation range:
     #   R_opaque ±15%, U_fenestration ±10%, C_house ±15%, C_w ±30%,
-    #   ceiling_coupling_factor ±33%. C_stack and C_wind get wider σ to
-    #   reflect their interim provisional means.
-    sigmas = np.array([0.15, 0.10, 7.5e5, 0.25, 0.08, 15.0, 0.25])
+    #   ceiling_coupling_factor ±33%. C_stack and C_wind σ derived from
+    #   Sherman-Grimsrud table variance: C_stack 20% (inter-home internal
+    #   air-path variability for 1-story homes), C_wind 40% (shelter-class
+    #   2 to 4 spans roughly ±40% of class-3 default).
+    sigmas = np.array([0.15, 0.10, 7.5e5, 0.20, 0.40, 15.0, 0.25])
     # Diagonal covariance (Manual J does not give correlated information)
     cov = np.diag(sigmas ** 2)
 
