@@ -294,7 +294,8 @@ def _envelope_overrides(
 
         # Ceiling: composed multiplier r_opaque × f_ceiling
         # new_R_ceiling = R_nominal / (r_opaque × f_ceiling)
-        composed_ceiling_factor = r_opaque * f_ceiling
+        # Guard against optimizer probes at composed factor near zero.
+        composed_ceiling_factor = max(r_opaque * f_ceiling, 1.0e-3)
         new_R_ceiling = original_variant_props.R_ceiling / composed_ceiling_factor
         E.VARIANT_PROPERTIES[variant] = replace(
             original_variant_props,
