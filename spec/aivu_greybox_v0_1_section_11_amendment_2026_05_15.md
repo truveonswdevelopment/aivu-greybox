@@ -2,7 +2,9 @@
 
 **Amendment ID:** GREYBOX-§11.2-AMEND-2026-05-15
 **Drafted:** 2026-05-15 (session with JDS)
-**Status:** Draft, pending JDS lock.
+**Status:** Authoritative — landed in code 2026-05-15.
+
+**Locked in code:** Pass A (commit `64102b6`) ported the seven-parameter canonical set into `defaults.py`, `forward_chain.py`, `passive_fit_types.py`, and `passive_fit.py`. Pass B (commit `dd31fa3`) updated `active_fit.py` and the test fixtures; all 69 tests pass against the new set. The Operational addendum was updated in the same Pass B commit to capture the canonical python/pytest invocation.
 **Supersedes:** §11.2 canonical six-parameter set as encoded in
 `defaults.CANONICAL_PARAMETER_NAMES` v0.1.
 
