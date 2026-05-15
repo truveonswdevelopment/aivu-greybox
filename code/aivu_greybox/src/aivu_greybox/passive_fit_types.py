@@ -1,9 +1,14 @@
 """Prior interface (§5.4) and Day-1-2 passive-window telemetry types (§5.3).
 
 Per §5.4: §5 specifies the prior INTERFACE, not the prior values. The
-caller (the BDT or a fallback supplier) constructs a Prior6D and hands it
+caller (the BDT or a fallback supplier) constructs a Prior7D and hands it
 to `run_passive_batch_fit`. The path that produced the prior is captured
 in `provenance` for downstream auditability.
+
+§11.2 amendment 2026-05-15: prior class renamed Prior6D → Prior7D
+reflecting the new seven-parameter canonical set. `Prior6D` is kept as a
+deprecation alias for one cycle; consumers (active_fit, tests) update
+their imports in Pass B and the alias retires.
 """
 
 from __future__ import annotations
@@ -18,26 +23,30 @@ from .fan_heat import FanHeatSample  # reused for the inner telemetry-sample sha
 
 
 # ---------------------------------------------------------------------------
-# Prior over the six canonical parameters
+# Prior over the seven canonical parameters
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
-class Prior6D:
-    """Multivariate Gaussian prior over the canonical parameter vector.
+class Prior7D:
+    """Multivariate Gaussian prior over the seven-parameter canonical vector.
 
     Per §5.4:
-      - Mean vector μ_prior ∈ ℝ⁶
-      - Covariance matrix Σ_prior ∈ ℝ⁶ˣ⁶, positive-definite
+      - Mean vector μ_prior ∈ ℝ⁷
+      - Covariance matrix Σ_prior ∈ ℝ⁷ˣ⁷, positive-definite
       - Provenance descriptor and hash
 
     The path preference order (PINN → EnergyPlus → ACCA Manual J) is
     operational policy; this dataclass carries whichever path's output
     via the provenance fields.
+
+    Per §11.2 amendment 2026-05-15: canonical order is
+    (R_opaque, U_fenestration, C_house, C_stack, C_wind, C_w,
+    ceiling_coupling_factor). See defaults.CANONICAL_PARAMETER_NAMES.
     """
 
-    mean: np.ndarray  # shape (6,)
-    covariance: np.ndarray  # shape (6, 6)
+    mean: np.ndarray  # shape (7,)
+    covariance: np.ndarray  # shape (7, 7)
     provenance_descriptor: str
     provenance_hash: str
     generated_timestamp_iso: str
@@ -74,8 +83,15 @@ class Prior6D:
         return np.sqrt(np.diag(self.covariance))
 
 
-def make_acca_manual_j_fallback_prior(provenance_hash: str = "") -> Prior6D:
-    """Construct an ACCA Manual J fallback prior per §5.4 path-preference (3).
+# Deprecation alias — Prior6D names the same class as Prior7D for one
+# cycle so consumers (active_fit, tests) can update their imports in
+# Pass B without breaking Pass A. The alias retires when Pass B lands.
+Prior6D = Prior7D
+
+
+def make_acca_manual_j_fallback_prior(provenance_hash: str = "") -> Prior7D:
+    """Construct an ACCA Manual J fallback prior per §5.4 path-preference (3)
+    and §11.2 amendment 2026-05-15.
 
     Per the spec: "appropriate as a strict-pilot-time fallback. The AOT
     §3.2 placeholder of 0.75 for ceiling_coupling_factor is consistent
@@ -83,35 +99,49 @@ def make_acca_manual_j_fallback_prior(provenance_hash: str = "") -> Prior6D:
     Phoenix CZ 2B single-family of 1800-sqft-class with two-stage AC and
     foam-deck attic.
 
-    Returned prior σ's are deliberately wide on the loosely-identified
-    parameters (cfm50, F_slab, C_w) and tighter on the well-characterized
-    ones (R_eff, C_house, ceiling_coupling_factor) — reflecting what
-    Manual J actually constrains.
+    Per §11.2 amendment: returns a Prior7D with the new canonical set:
+      - R_opaque, U_fenestration replace R_eff.
+      - C_stack, C_wind replace cfm50 with operational-infiltration
+        coefficients. Provisional values; the Sherman-Grimsrud-derived
+        means from the §11.2 amendment companion derivation displace
+        these once that math is walked through.
+      - F_slab no longer fitted (moved to HomeStaticContext).
+
+    Returned prior σ's are calibrated per the §11.2 amendment table:
+    tighter on R_opaque, U_fenestration, C_house, ceiling_coupling_factor
+    (well-identified by §5 passive forcing); wider on C_stack, C_wind, C_w
+    (less informative under purely passive observation).
     """
     import hashlib
     from datetime import datetime, timezone
 
-    # Means in SI internal units.
-    # R_eff ~ 5 m²·K/W effective (whole-envelope thermal resistance,
-    #    approximate for 1800-sqft single-family with foam-deck attic)
-    # C_house ~ 5 MJ/K (lumped sensible capacitance, 1800 sqft)
-    # cfm50 ~ 1800 (whole-house leakage at 50 Pa, typical Phoenix new build)
-    # F_slab ~ 100 W/K (slab F-factor for ground coupling)
-    # C_w ~ 8 kg dry air × something  (moisture capacity proxy)
-    # ceiling_coupling_factor ~ 0.75 per AOT §3.2 placeholder
-    mean = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+    # Canonical-order means per §11.2 amendment table:
+    # R_opaque                 = 1.0   (dimensionless multiplier on nameplate opaque U·A)
+    # U_fenestration           = 1.0   (dimensionless multiplier on nameplate fenestration U·A)
+    # C_house                  = 5e6   J/K (whole-house sensible capacitance)
+    # C_stack                  = 0.5   stack-driven operational-infiltration coefficient
+    #                                  (provisional; awaits Sherman-Grimsrud-derived value
+    #                                  from §11.2 amendment companion derivation)
+    # C_wind                   = 0.1   wind-driven operational-infiltration coefficient
+    #                                  (provisional; same as above)
+    # C_w                      = 50    latent moisture capacitance proxy
+    # ceiling_coupling_factor  = 0.75  per AOT §3.2 placeholder (unchanged from v0.1)
+    mean = np.array([1.0, 1.0, 5.0e6, 0.5, 0.1, 50.0, 0.75])
 
-    # Marginal standard deviations: wider for loose parameters.
-    # 20% R_eff, 15% C_house, 50% cfm50, 40% F_slab, 30% C_w, 33% ceiling_coupling
-    sigmas = np.array([1.0, 7.5e5, 900.0, 40.0, 15.0, 0.25])
+    # Marginal standard deviations per §11.2 amendment table.
+    # σ widths chosen to span the expected as-built deviation range:
+    #   R_opaque ±15%, U_fenestration ±10%, C_house ±15%, C_w ±30%,
+    #   ceiling_coupling_factor ±33%. C_stack and C_wind get wider σ to
+    #   reflect their interim provisional means.
+    sigmas = np.array([0.15, 0.10, 7.5e5, 0.25, 0.08, 15.0, 0.25])
     # Diagonal covariance (Manual J does not give correlated information)
     cov = np.diag(sigmas ** 2)
 
-    descriptor = "ACCA_ManualJ_Phoenix_2B_1800sqft_2stage_foam_attic"
+    descriptor = "ACCA_ManualJ_Phoenix_2B_1800sqft_2stage_foam_attic_v11_2_amendment"
     if not provenance_hash:
         provenance_hash = hashlib.sha256(descriptor.encode()).hexdigest()[:32]
 
-    return Prior6D(
+    return Prior7D(
         mean=mean,
         covariance=cov,
         provenance_descriptor=descriptor,

@@ -1,6 +1,7 @@
 """§5 — Day-1-2 passive batch fit (Laplace approximation).
 
-Implements the six-parameter Bayesian inverse identification per §5:
+Implements the seven-parameter Bayesian inverse identification per §5
+and the §11.2 amendment 2026-05-15:
 
   - Two-channel observation model per §5.3 (attic-channel from warmup
     terminal probes; main-channel from post-warmup return-plenum readings).
@@ -27,6 +28,7 @@ from scipy.optimize import minimize
 
 from .defaults import (
     CANONICAL_PARAMETER_NAMES,
+    EXPECTED_TIGHTNESS_SIGMA_OVER_MU,
     LAPLACE_MODE_AGREEMENT_FRACTION,
     LAPLACE_NUM_RESTARTS,
     NUM_CANONICAL_PARAMETERS,
@@ -41,7 +43,7 @@ from .forward_chain import (
     StateTrajectory,
     WeatherSeries,
 )
-from .passive_fit_types import Day12TelemetryWindow, Prior6D
+from .passive_fit_types import Day12TelemetryWindow, Prior7D
 from .psychrometrics import P_ATM_PHOENIX_PA, humidity_ratio
 from .records import (
     Day2Posterior,
@@ -247,7 +249,7 @@ def neg_log_likelihood(
     return 0.5 * chi2
 
 
-def neg_log_prior(theta: np.ndarray, prior: Prior6D) -> float:
+def neg_log_prior(theta: np.ndarray, prior: Prior7D) -> float:
     """-log p(θ) for the multivariate Gaussian prior, modulo constants."""
     delta = theta - prior.mean
     cov_inv = np.linalg.inv(prior.covariance)
@@ -260,7 +262,7 @@ def neg_log_posterior(
     window: Day12TelemetryWindow,
     forward_chain: ForwardChain,
     context: HomeStaticContext,
-    prior: Prior6D,
+    prior: Prior7D,
 ) -> float:
     """The objective L-BFGS-B minimizes."""
     return (
@@ -339,23 +341,23 @@ class LaplaceFitFailed(Exception):
 class LaplaceResult:
     """End-to-end Laplace fit output, before signing."""
 
-    posterior_mean: np.ndarray  # shape (6,)
-    posterior_covariance: np.ndarray  # shape (6, 6)
-    hessian_at_mode: np.ndarray  # shape (6, 6) -- inverse of covariance
-    hessian_eigenvalues: np.ndarray  # shape (6,)
+    posterior_mean: np.ndarray  # shape (7,)
+    posterior_covariance: np.ndarray  # shape (7, 7)
+    hessian_at_mode: np.ndarray  # shape (7, 7) -- inverse of covariance
+    hessian_eigenvalues: np.ndarray  # shape (7,)
     hessian_condition_number: float
-    restart_modes: np.ndarray  # shape (NUM_RESTARTS, 6)
+    restart_modes: np.ndarray  # shape (NUM_RESTARTS, 7)
     restart_log_posteriors: np.ndarray  # shape (NUM_RESTARTS,)
     mode_agreement_passed: bool
     hessian_positive_definite: bool
     optimizer_converged_all_restarts: bool
-    posterior_prior_kl_divergence_per_param: np.ndarray  # shape (6,)
+    posterior_prior_kl_divergence_per_param: np.ndarray  # shape (7,)
 
 
 def _gaussian_kl_per_param(
     posterior_mean: np.ndarray,
     posterior_cov: np.ndarray,
-    prior: Prior6D,
+    prior: Prior7D,
 ) -> np.ndarray:
     """Per-parameter KL(posterior_marginal_i || prior_marginal_i) per §8 Diagnostic 4."""
     n = posterior_mean.shape[0]
@@ -376,7 +378,7 @@ def _gaussian_kl_per_param(
 def run_laplace_fit(
     obs: TwoChannelObservations,
     window: Day12TelemetryWindow,
-    prior: Prior6D,
+    prior: Prior7D,
     forward_chain: ForwardChain,
     context: HomeStaticContext,
     num_restarts: int = LAPLACE_NUM_RESTARTS,
@@ -432,14 +434,23 @@ def run_laplace_fit(
             for i in range(n_params)
         ]
         # Tighten further: strictly-positive parameters must stay positive
-        # and well-conditioned. R_eff in particular drives a 1/R_eff term
-        # in the dynamics and we cannot let it approach zero.
+        # and well-conditioned. Per §11.2 amendment 2026-05-15:
+        #   R_opaque, U_fenestration — dimensionless multipliers on
+        #     nameplate U·A; floor at 0.1 (10% of nameplate is the
+        #     physical absurdity boundary).
+        #   C_house — J/K; floor at 1e5 to keep dT/dt finite.
+        #   C_stack, C_wind — operational-infiltration coefficients;
+        #     can be zero physically (no infiltration limit).
+        #   C_w — moisture buffer; floor at 1 to keep dW/dt finite.
+        #   ceiling_coupling_factor — dimensionless multiplier on
+        #     total attic↔conditioned coupling; can approach zero.
         positive_floors = {
-            "R_eff": 0.5,        # m²·K/W
-            "C_house": 1e5,      # J/K
-            "cfm50": 100.0,      # cfm
+            "R_opaque": 0.1,
+            "U_fenestration": 0.1,
+            "C_house": 1e5,
+            "C_stack": 0.0,
+            "C_wind": 0.0,
             "C_w": 1.0,
-            "F_slab": 0.0,
             "ceiling_coupling_factor": 0.0,
         }
         for i, name in enumerate(CANONICAL_PARAMETER_NAMES):
@@ -526,11 +537,15 @@ def run_laplace_fit(
 
 def build_identifiability_report(
     laplace: LaplaceResult,
-    prior: Prior6D,
+    prior: Prior7D,
     protocol: str = "§5_day2_passive",
 ) -> IdentifiabilityReport:
     """Build the §8 v1 schema identifiability_report from the Laplace fit
     output. Implements the four diagnostics per §8.2 against the posterior.
+
+    Per §11.2 amendment 2026-05-15: the expected-tightness table is now
+    imported from `defaults.EXPECTED_TIGHTNESS_SIGMA_OVER_MU` rather than
+    inlined here. The table updates as a single point of truth.
     """
     from .defaults import (
         ID8_HESSIAN_KAPPA_THRESHOLD,
@@ -552,21 +567,10 @@ def build_identifiability_report(
         if flag:
             any_identifiability_flag = True
 
-        # Diagnostic 2: tightness state
-        # σ_post / μ_post; expected values from §5.5 table baked here as the
-        # canonical reference (per INV-ID8-7 the table is by reference to §5.5).
-        # Pinned values per §5 v3.3 closing note: 5/5/30/15/25/15
-        # (R_eff / C_house / cfm50 / F_slab / C_w / ceiling_coupling_factor)
-        expected_tightness_pct = {
-            "R_eff": 0.05,
-            "C_house": 0.05,
-            "cfm50": 0.30,
-            "F_slab": 0.15,
-            "C_w": 0.25,
-            "ceiling_coupling_factor": 0.15,
-        }
+        # Diagnostic 2: tightness state, against the §11.2 canonical table
+        # (imported from defaults, single source of truth).
         achieved = float(posterior_sigmas[i] / abs(laplace.posterior_mean[i]))
-        expected = expected_tightness_pct[name]
+        expected = EXPECTED_TIGHTNESS_SIGMA_OVER_MU[name]
         if achieved <= expected:
             state = "within"
         elif achieved <= 2.0 * expected:
@@ -647,7 +651,7 @@ class PassiveFitResult:
 
 def run_passive_batch_fit(
     window: Day12TelemetryWindow,
-    prior: Prior6D,
+    prior: Prior7D,
     fan_heat_pass_record_hash: str,
     home_id: str,
     forward_chain: ForwardChain,
@@ -673,7 +677,7 @@ def run_passive_batch_fit(
       - Supply a valid `FanHeatPass` record hash (INV-FIT12-1). The §4 module
         is responsible for producing it; this function trusts the caller's
         upstream check.
-      - Supply a Prior6D with provenance metadata per §5.4 (INV-FIT12-3).
+      - Supply a Prior7D with provenance metadata per §5.4 (INV-FIT12-3).
 
     Raises:
       LaplaceFitFailed if any §5.7 convergence or quality diagnostic fails.

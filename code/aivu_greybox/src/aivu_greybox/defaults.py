@@ -9,6 +9,12 @@ configuration object: §11 is "the canonical table", not "the configuration
 schema". A configuration object that overrides defaults is a separate
 concern that earns its place when the pilot demonstrates per-home overrides
 are needed.
+
+§11.2 amendment 2026-05-15: canonical parameter set updated from six to
+seven. See spec/aivu_greybox_v0_1_section_11_amendment_2026_05_15.md for
+the rationale. R_eff split into (R_opaque, U_fenestration); cfm50 replaced
+by (C_stack, C_wind) operational-infiltration coefficients; F_slab moved
+to HomeStaticContext as known-from-construction.
 """
 
 from __future__ import annotations
@@ -148,15 +154,54 @@ ID8_HESSIAN_KAPPA_THRESHOLD: float = 1.0e6
 ID8_RIDGE_EIGENVALUE_FRACTION: float = 1.0e-4
 
 # ---------------------------------------------------------------------------
-# Six-parameter canonical set, in canonical order
+# Seven-parameter canonical set, in canonical order
 # ---------------------------------------------------------------------------
+# Per §11.2 amendment 2026-05-15. Replaces the v0.1 six-parameter set.
+#
+# Physical roles:
+#   R_opaque                 — dimensionless multiplier on opaque-envelope U·A
+#                              (walls, ceiling, opaque doors).
+#   U_fenestration           — dimensionless multiplier on fenestration U·A
+#                              (windows, sliding glass doors).
+#   C_house                  — whole-house sensible thermal capacitance, J/K.
+#   C_stack                  — stack-driven operational-infiltration coefficient.
+#                              Replaces v0.1 cfm50.
+#   C_wind                   — wind-driven operational-infiltration coefficient.
+#                              Replaces v0.1 cfm50.
+#   C_w                      — whole-house latent moisture capacitance.
+#   ceiling_coupling_factor  — dimensionless multiplier on total attic-to-
+#                              conditioned-space coupling (captures bypass
+#                              paths: recessed cans, hatches, top-plate gaps,
+#                              duct radiation, can-light air mixing).
 
 CANONICAL_PARAMETER_NAMES: tuple[str, ...] = (
-    "R_eff",
+    "R_opaque",
+    "U_fenestration",
     "C_house",
-    "cfm50",
-    "F_slab",
+    "C_stack",
+    "C_wind",
     "C_w",
     "ceiling_coupling_factor",
 )
 NUM_CANONICAL_PARAMETERS: int = len(CANONICAL_PARAMETER_NAMES)
+
+# ---------------------------------------------------------------------------
+# §8 expected-tightness table — promoted to defaults per §11.2 amendment
+# ---------------------------------------------------------------------------
+# Per-parameter σ_post / μ_post that the §8 identifiability report classifies
+# as "within" (≤ value), "loose" (≤ 2×), or "degraded" (> 2×). v0.1
+# provisional; pilot data will tighten in v0.2.
+#
+# C_wind carries the loosest expected tightness, reflecting Phoenix's
+# low-and-relatively-uniform wind regime. Climate-zone-conditional tables
+# are v0.2 work.
+
+EXPECTED_TIGHTNESS_SIGMA_OVER_MU: dict[str, float] = {
+    "R_opaque": 0.05,
+    "U_fenestration": 0.07,
+    "C_house": 0.05,
+    "C_stack": 0.20,
+    "C_wind": 0.35,
+    "C_w": 0.25,
+    "ceiling_coupling_factor": 0.15,
+}
