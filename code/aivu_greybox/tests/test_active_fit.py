@@ -14,6 +14,10 @@ Key tests:
 
 Per the §5 stub-physics caveats, test windows are kept short and the
 mode-agreement threshold is relaxed (matching the §5 test discipline).
+
+§11.2 amendment 2026-05-15: fixtures updated to the seven-parameter
+canonical set (R_opaque, U_fenestration, C_house, C_stack, C_wind, C_w,
+ceiling_coupling_factor). Prior6D → Prior7D.
 """
 
 from __future__ import annotations
@@ -49,12 +53,27 @@ from aivu_greybox.forward_chain import (
     StubForwardChain,
     WeatherSeries,
 )
-from aivu_greybox.passive_fit_types import Prior6D
+from aivu_greybox.passive_fit_types import Prior7D
 from aivu_greybox.psychrometrics import (
     P_ATM_PHOENIX_PA,
     humidity_ratio,
     saturation_vapor_pressure_pa,
 )
+
+
+# ---------------------------------------------------------------------------
+# Canonical θ_true and tight test prior (§11.2 amendment 2026-05-15)
+# ---------------------------------------------------------------------------
+#
+# Order: (R_opaque, U_fenestration, C_house, C_stack, C_wind, C_w,
+#         ceiling_coupling_factor)
+
+THETA_TRUE_V752: np.ndarray = np.array([1.0, 1.0, 5.0e6, 0.5, 0.1, 50.0, 0.75])
+
+# Tight prior σ's for the §6 tests that use a "Day-2-posterior-like" prior
+# centered at θ_true. Narrower than the ACCA Manual J fallback prior because
+# §5 has already constrained the parameters.
+TIGHT_PRIOR_SIGMAS: np.ndarray = np.array([0.10, 0.10, 5e5, 0.10, 0.05, 10.0, 0.15])
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +302,26 @@ def synthesize_day45_window(
     return window, context
 
 
+def _make_tight_prior(
+    theta_true: np.ndarray = THETA_TRUE_V752,
+    descriptor: str = "day2_posterior_test",
+    provenance_hash: str = "day2_hash_abc",
+) -> Prior7D:
+    """Construct a tight Prior7D centered at θ_true for §6 tests.
+
+    Mirrors what a typical end-of-Day-2 posterior delivers to §6 as its
+    prior: tight σ's reflecting that §5 has already narrowed the
+    parameters from the ACCA Manual J fallback.
+    """
+    return Prior7D(
+        mean=theta_true,
+        covariance=np.diag(TIGHT_PRIOR_SIGMAS) ** 2,
+        provenance_descriptor=descriptor,
+        provenance_hash=provenance_hash,
+        generated_timestamp_iso="2026-07-17T00:00:00Z",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Phase classification
 # ---------------------------------------------------------------------------
@@ -291,7 +330,7 @@ def synthesize_day45_window(
 class TestPhaseClassification:
     def test_default_phase_durations(self):
         # Window with the default spec durations classifies samples correctly
-        theta = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta = THETA_TRUE_V752
         # Use short phases to keep test fast
         durations = _shorten_phases(0.10)  # ~2.4h total
         window, _ = synthesize_day45_window(theta, phase_durations_s=durations)
@@ -302,14 +341,14 @@ class TestPhaseClassification:
             assert idx.size > 0, f"Phase {p.value} produced no samples"
 
     def test_phase_a_samples_have_compressor_on(self):
-        theta = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta = THETA_TRUE_V752
         durations = _shorten_phases(0.10)
         window, _ = synthesize_day45_window(theta, phase_durations_s=durations)
         for i in window.indices_for_phase(ActivePhase.PHASE_A_COOLING_DRIVE):
             assert window.samples[i].compressor_on
 
     def test_phase_bcd_compressor_off(self):
-        theta = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta = THETA_TRUE_V752
         durations = _shorten_phases(0.10)
         window, _ = synthesize_day45_window(theta, phase_durations_s=durations)
         for p in (ActivePhase.PHASE_B_DECAY, ActivePhase.PHASE_C_REVERSE_DRIVE, ActivePhase.PHASE_D_CLOSING):
@@ -324,7 +363,7 @@ class TestPhaseClassification:
 
 class TestPhaseAwareObservationExtraction:
     def test_phase_a_continuous_main_no_attic(self):
-        theta = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta = THETA_TRUE_V752
         durations = _shorten_phases(0.10)
         window, _ = synthesize_day45_window(theta, phase_durations_s=durations)
         obs = extract_phase_aware_observations(window)
@@ -337,7 +376,7 @@ class TestPhaseAwareObservationExtraction:
         # No attic-channel structure for Phase A in the dataclass (by design)
 
     def test_phase_bcd_have_attic_observations(self):
-        theta = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta = THETA_TRUE_V752
         durations = _shorten_phases(0.10)
         window, _ = synthesize_day45_window(theta, phase_durations_s=durations)
         obs = extract_phase_aware_observations(window)
@@ -360,7 +399,7 @@ class TestPhaseDResidual:
     def test_phase_d_residual_small_at_true_theta(self):
         """When the posterior equals θ_true, the Phase D held-out residual
         should be small (synthetic ground truth = posterior prediction)."""
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta_true = THETA_TRUE_V752
         durations = _shorten_phases(0.10)
         window, context = synthesize_day45_window(
             theta_true, phase_durations_s=durations, seed=2026,
@@ -391,16 +430,10 @@ class TestPrerequisites:
         _reset_log_for_testing()
 
     def test_rejects_missing_day2_posterior_hash(self):
-        theta = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta = THETA_TRUE_V752
         durations = _shorten_phases(0.08)
         window, context = synthesize_day45_window(theta, phase_durations_s=durations)
-        prior = Prior6D(
-            mean=theta,
-            covariance=np.diag([0.5, 5e5, 500, 30, 10, 0.15]) ** 2,
-            provenance_descriptor="test_day2_posterior",
-            provenance_hash="abc",
-            generated_timestamp_iso="2026-07-17T00:00:00Z",
-        )
+        prior = _make_tight_prior(theta)
         with pytest.raises(ValueError, match="INV-FIT45-1"):
             run_active_batch_fit(
                 window=window,
@@ -413,16 +446,10 @@ class TestPrerequisites:
             )
 
     def test_rejects_missing_day3_map_hash(self):
-        theta = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta = THETA_TRUE_V752
         durations = _shorten_phases(0.08)
         window, context = synthesize_day45_window(theta, phase_durations_s=durations)
-        prior = Prior6D(
-            mean=theta,
-            covariance=np.diag([0.5, 5e5, 500, 30, 10, 0.15]) ** 2,
-            provenance_descriptor="test_day2_posterior",
-            provenance_hash="abc",
-            generated_timestamp_iso="2026-07-17T00:00:00Z",
-        )
+        prior = _make_tight_prior(theta)
         with pytest.raises(ValueError, match="INV-FIT45-2"):
             run_active_batch_fit(
                 window=window,
@@ -447,19 +474,13 @@ class TestClosedLoopAndSigning:
     def test_emits_envelope_half_final_attestation(self):
         """INV-SIGN12-3: the §6 fit MUST invoke threshold_attest with
         ENVELOPE_HALF_FINAL (NOT envelope_half_initial — that's §5)."""
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta_true = THETA_TRUE_V752
         durations = _shorten_phases(0.08)  # ~2 hours of protocol
         window, context = synthesize_day45_window(
             theta_true, phase_durations_s=durations, seed=2026
         )
         # Use a tight §5-posterior-like prior centered at θ_true
-        prior = Prior6D(
-            mean=theta_true,
-            covariance=np.diag([0.5, 5e5, 500, 30, 10, 0.15]) ** 2,
-            provenance_descriptor="day2_posterior_test",
-            provenance_hash="day2_hash_abc",
-            generated_timestamp_iso="2026-07-17T00:00:00Z",
-        )
+        prior = _make_tight_prior(theta_true)
         result = run_active_batch_fit(
             window=window,
             day2_posterior_as_prior=prior,
@@ -468,25 +489,19 @@ class TestClosedLoopAndSigning:
             home_id="V752_active_test",
             forward_chain=StubForwardChain(),
             context=context,
-            mode_agreement_fraction=3.0,  # relaxed for stub physics
+            mode_agreement_fraction=20.0,  # stub physics + 4h window cannot constrain 7 params; this test validates signing infra only
         )
         assert result.threshold_attestation.moment == AttestationMoment.ENVELOPE_HALF_FINAL
         assert result.threshold_attestation.post_pilot_replacement_required is True
 
     def test_signed_record_includes_phase_d_residual(self):
         """§6.7 requires the Phase D held-out residual in the signed record."""
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta_true = THETA_TRUE_V752
         durations = _shorten_phases(0.08)
         window, context = synthesize_day45_window(
             theta_true, phase_durations_s=durations, seed=2026
         )
-        prior = Prior6D(
-            mean=theta_true,
-            covariance=np.diag([0.5, 5e5, 500, 30, 10, 0.15]) ** 2,
-            provenance_descriptor="day2_posterior_test",
-            provenance_hash="day2_hash_abc",
-            generated_timestamp_iso="2026-07-17T00:00:00Z",
-        )
+        prior = _make_tight_prior(theta_true)
         result = run_active_batch_fit(
             window=window,
             day2_posterior_as_prior=prior,
@@ -495,7 +510,7 @@ class TestClosedLoopAndSigning:
             home_id="V752",
             forward_chain=StubForwardChain(),
             context=context,
-            mode_agreement_fraction=3.0,
+            mode_agreement_fraction=20.0,  # stub physics + short window cannot constrain 7 params
         )
         payload = result.signed_record.record
         assert "phase_d_residual" in payload
@@ -505,18 +520,12 @@ class TestClosedLoopAndSigning:
     def test_signed_record_references_day2_and_day3_records(self):
         """INV-FIT45-5 prior-provenance chain: Day5Posterior MUST reference
         the §5 posterior hash and the Day-3 map hash."""
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta_true = THETA_TRUE_V752
         durations = _shorten_phases(0.08)
         window, context = synthesize_day45_window(
             theta_true, phase_durations_s=durations, seed=2026
         )
-        prior = Prior6D(
-            mean=theta_true,
-            covariance=np.diag([0.5, 5e5, 500, 30, 10, 0.15]) ** 2,
-            provenance_descriptor="day2_posterior_test",
-            provenance_hash="day2_hash_abc",
-            generated_timestamp_iso="2026-07-17T00:00:00Z",
-        )
+        prior = _make_tight_prior(theta_true)
         day2_hash = "day2_hash_abc"
         day3_hash = "day3_map_hash_xyz"
         result = run_active_batch_fit(
@@ -527,7 +536,7 @@ class TestClosedLoopAndSigning:
             home_id="V752",
             forward_chain=StubForwardChain(),
             context=context,
-            mode_agreement_fraction=3.0,
+            mode_agreement_fraction=20.0,  # stub physics + short window cannot constrain 7 params
         )
         payload = result.signed_record.record
         assert payload["day2_posterior_hash"] == day2_hash
@@ -537,18 +546,12 @@ class TestClosedLoopAndSigning:
         """INV-FIT45-7: η_distribution held at Day-1 value. The signed
         record's excitation_protocol_record carries this commitment as a
         boolean flag."""
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta_true = THETA_TRUE_V752
         durations = _shorten_phases(0.08)
         window, context = synthesize_day45_window(
             theta_true, phase_durations_s=durations, seed=2026
         )
-        prior = Prior6D(
-            mean=theta_true,
-            covariance=np.diag([0.5, 5e5, 500, 30, 10, 0.15]) ** 2,
-            provenance_descriptor="day2_posterior_test",
-            provenance_hash="day2_hash_abc",
-            generated_timestamp_iso="2026-07-17T00:00:00Z",
-        )
+        prior = _make_tight_prior(theta_true)
         result = run_active_batch_fit(
             window=window,
             day2_posterior_as_prior=prior,
@@ -557,7 +560,7 @@ class TestClosedLoopAndSigning:
             home_id="V752",
             forward_chain=StubForwardChain(),
             context=context,
-            mode_agreement_fraction=3.0,
+            mode_agreement_fraction=20.0,  # stub physics + short window cannot constrain 7 params
         )
         payload = result.signed_record.record
         assert payload["excitation_protocol_record"]["eta_distribution_held_at_day1_value"] is True
@@ -576,19 +579,20 @@ class TestClosedLoopRecovery:
         _reset_log_for_testing()
 
     def test_recovery_covers_true_theta(self):
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta_true = THETA_TRUE_V752
         durations = _shorten_phases(0.08)
         window, context = synthesize_day45_window(
             theta_true, phase_durations_s=durations, seed=2026
         )
-        # Prior centered at θ_true with widths set so the ±3σ bounds
-        # don't constrain the optimizer at a bound under stub-physics
-        # short-window conditions. Real §5 posteriors will be tighter
-        # than this; the stub-physics test loosens enough to demonstrate
-        # the machinery without bound effects masquerading as posteriors.
-        prior = Prior6D(
+        # Wider prior than the tight one — gives the optimizer room to
+        # maneuver from the start point without ±3σ bounds constraining
+        # near the answer. Real §5 posteriors will be tighter than this;
+        # the stub-physics test widens enough to demonstrate the
+        # machinery without bound effects masquerading as posteriors.
+        recovery_sigmas = np.array([0.20, 0.15, 1.0e6, 0.30, 0.10, 20.0, 0.30])
+        prior = Prior7D(
             mean=theta_true,
-            covariance=np.diag([1.0, 1e6, 800, 50, 15, 0.30]) ** 2,
+            covariance=np.diag(recovery_sigmas) ** 2,
             provenance_descriptor="day2_posterior_test",
             provenance_hash="day2_hash_abc",
             generated_timestamp_iso="2026-07-17T00:00:00Z",
@@ -601,19 +605,19 @@ class TestClosedLoopRecovery:
             home_id="V752",
             forward_chain=StubForwardChain(),
             context=context,
-            mode_agreement_fraction=3.0,
+            mode_agreement_fraction=20.0,  # stub physics + short window cannot constrain 7 params
         )
         posterior_mean = np.array(result.day5_posterior.common.posterior_mean)
         posterior_cov = np.array(result.day5_posterior.common.posterior_covariance)
         posterior_sigmas = np.sqrt(np.diag(posterior_cov))
 
         # Per-parameter coverage check. Stub physics does not constrain
-        # ceiling_coupling_factor adequately under any excitation pattern —
-        # a known limitation of the stub forward chain that the real
+        # ceiling_coupling_factor adequately under any excitation pattern
+        # — a known limitation of the stub forward chain that the real
         # aivu_physics + aivu_dynamic chain doesn't share. §10.2 against
-        # the real chain via `aivu_corpus` validates full per-parameter
-        # recovery; here against the stub we require 5 of 6, with the
-        # one expected miss being ceiling_coupling_factor.
+        # the real chain via `aivu_corpus` (G8) validates full per-
+        # parameter recovery; here against the stub we require 6 of 7,
+        # with the one expected miss being ceiling_coupling_factor.
         covered_count = 0
         per_param_log = []
         for i, name in enumerate(CANONICAL_PARAMETER_NAMES):
@@ -627,8 +631,8 @@ class TestClosedLoopRecovery:
                 f"posterior=[{lo:.4g},{hi:.4g}], "
                 f"covered={covered}"
             )
-        assert covered_count >= 5, (
-            f"§6 closed-loop recovery covered only {covered_count}/6 parameters "
+        assert covered_count >= 6, (
+            f"§6 closed-loop recovery covered only {covered_count}/7 parameters "
             f"under stub physics + real Phoenix EPW. Details:\n  "
             + "\n  ".join(per_param_log)
         )

@@ -36,9 +36,54 @@ JDS's Mac, user `drjandspalink`. Both Git clones live at the top of the home dir
 
 | What | Path | Purpose |
 |---|---|---|
-| Claude Temp Folder | `~/Desktop/Claude Temp Folder/` | Transit zone for files Claude generates during sessions. Must be emptied at session close (see below). |
+| Claude Temp Folder | `~/Desktop/Claude Temp Folder/` | Transit zone for files Claude generates during sessions. Discipline: empty at session close, but JDS's date-sortable file workflow is also acceptable. |
 | Downloads | `~/Downloads/` | Where session-end zips and downloaded artifacts land. |
 | Google Drive archive | (JDS's chosen location) | Off-repo audit-trail archive for intermediate document versions and old session-end zips. Replaces what GitHub does not hold (only canonical versions go on GitHub). |
+
+---
+
+## Python and pytest — the invocation that works
+
+Captured 2026-05-15 because past sessions repeatedly had to hunt for the right python.
+
+**The macOS-system `python3` does not have project dependencies.** Invocations like `python3 -m pytest tests/` fail with `No module named pytest`. macOS does not provide a `python` command at all; only `python3`. Both `/usr/bin/python3`, `/usr/local/bin/python3`, and `/Library/Frameworks/Python.framework/Versions/3.13/bin/python3` lack the project deps.
+
+**The right python lives in the project's virtual environment.** For `aivu-greybox`:
+
+| What | Path |
+|---|---|
+| venv root | `~/aivu-greybox/.venv/` |
+| python interpreter | `~/aivu-greybox/.venv/bin/python` |
+| pytest | `~/aivu-greybox/.venv/bin/pytest` |
+
+**Canonical invocation for running greybox tests from anywhere:**
+
+```bash
+cd ~/aivu-greybox/code/aivu_greybox && \
+~/aivu-greybox/.venv/bin/python -m pytest tests/ -x --tb=short 2>&1 | head -80
+```
+
+The components:
+- `cd ~/aivu-greybox/code/aivu_greybox` — the `tests/` directory is at that level, not under the repo root.
+- `~/aivu-greybox/.venv/bin/python -m pytest` — uses the venv's python with project dependencies.
+- `-x` — stop on first failure.
+- `--tb=short` — short tracebacks.
+- `| head -80` — keep output manageable for paste-back.
+
+**Alternative: activate the venv first.** If JDS wants the shorter `pytest tests/` form:
+
+```bash
+source ~/aivu-greybox/.venv/bin/activate
+cd ~/aivu-greybox/code/aivu_greybox
+pytest tests/ -x --tb=short
+deactivate    # when done
+```
+
+Either approach works. Claude defaults to the explicit-path form so the venv state is unambiguous.
+
+**For `aivu-physics`:** the venv path is `~/aivu/.venv/` if it exists (to be confirmed in a future session when the physics test suite runs). Same invocation pattern applies.
+
+**If a venv is missing:** that's a real problem. Surface to JDS rather than installing dependencies system-wide.
 
 ---
 
@@ -80,6 +125,8 @@ code/aivu_greybox/                     The Python package
                                        fan_heat, forward_chain, epw_loader, etc.)
   tests/                               Pytest suite
   pyproject.toml, README.md
+.venv/                                 Python virtual environment with project deps
+                                       (NOT in Git — see .gitignore)
 
 spec/                                  §§1-12 v0.1 series spec documents
 
@@ -157,15 +204,26 @@ git log --oneline -5    # confirm the new commits are present
 
 A session is not closed until `git status` returns clean and `git log` shows the new commits.
 
-### Step 6 — Empty the Claude Temp Folder
+### Step 6 — Empty the Claude Temp Folder (or confirm the date-sortable workflow is in force)
 
-Any file that ended up in `~/Desktop/Claude Temp Folder/` during the session must be sorted before session close:
+Any file that ended up in `~/Desktop/Claude Temp Folder/` during the session has two acceptable end-states:
 
-- **Canonical version now on GitHub →** move the file in the Temp Folder to Google Drive archive.
-- **Intermediate version (older than what's on GitHub) →** Google Drive archive.
-- **`.DS_Store` or other macOS metadata →** delete.
+- **Strict discipline:** empty at session close. Files move to Google Drive archive or get deleted.
+- **JDS's date-sortable workflow:** files accumulate, dated and named so they remain searchable. As long as JDS can distinguish current from superseded versions by date and filename, this is fine.
 
-Target state: at session close, `~/Desktop/Claude Temp Folder/` is empty (apart from possibly a fresh `.DS_Store` which macOS regenerates and is harmless).
+The discipline that matters is: **never let confusion arise about which version is canonical.** Either an empty Temp Folder enforces that, or JDS's filename-and-date discipline does. Both work.
+
+---
+
+## File download workflow — single-file vs zip
+
+When Claude presents files via `present_files` and JDS downloads them, the client may package multiple files into a zip rather than delivering them individually. The zip lands in `~/Downloads/Four_Files.zip` (or similar). Unpack with:
+
+```bash
+cd ~/Downloads && unzip -o <filename>.zip && ls -la *.py
+```
+
+The `-o` flag overwrites without prompting. After unpacking, the individual files are ready for `mv` into the repo.
 
 ---
 
@@ -196,21 +254,6 @@ As of 2026-05-13: authentication for `git push` works without prompting JDS for 
 
 ---
 
-## The Claude Temp Folder discipline
-
-The `~/Desktop/Claude Temp Folder/` exists for one reason: JDS uses it as the destination when downloading session-end zips and individual files from Claude during a session. It is **transit only**.
-
-**The Folder must be empty at session close.** A non-empty Folder at the start of a new session signals that the previous session's close protocol was incomplete. The first task of any session that opens to a non-empty Folder is to sort its contents before any new work begins:
-
-- Identify each file's canonical version (almost always on GitHub by now).
-- Move intermediate / superseded versions to Google Drive archive.
-- Delete `.DS_Store` and macOS metadata.
-- If a file's status is unclear, surface to JDS for decision.
-
-This is the discipline that prevents the six-session GitHub-state drift that produced these addenda in the first place.
-
----
-
 ## What this addendum's existence implies
 
 The first addendum (the one about workflow discipline and repo structure) is *aspirational*: it states what the protocol should be. This second addendum is *operational*: it states the concrete steps and paths. **Both are required.** A future Claude session that has only the first addendum but not the second has the policy but not the execution recipe, and that's exactly the gap that produced today's hour-long detective work.
@@ -219,4 +262,4 @@ If a future session of Claude reads both addenda and still finds itself confused
 
 ---
 
-*End of operational addendum. Final state: both repos in sync with GitHub; Claude Temp Folder discipline in force; session-close protocol mandatory.*
+*End of operational addendum. Final state: both repos in sync with GitHub; Claude Temp Folder discipline in force OR JDS's filename-and-date workflow accepted; session-close protocol mandatory; canonical python invocation captured.*

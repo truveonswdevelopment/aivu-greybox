@@ -6,9 +6,9 @@ to `run_passive_batch_fit`. The path that produced the prior is captured
 in `provenance` for downstream auditability.
 
 §11.2 amendment 2026-05-15: prior class renamed Prior6D → Prior7D
-reflecting the new seven-parameter canonical set. `Prior6D` is kept as a
-deprecation alias for one cycle; consumers (active_fit, tests) update
-their imports in Pass B and the alias retires.
+reflecting the new seven-parameter canonical set. The deprecation alias
+Prior6D = Prior7D introduced in Pass A is retired in Pass B; all
+consumers (passive_fit, active_fit, tests) now import Prior7D directly.
 """
 
 from __future__ import annotations
@@ -81,12 +81,6 @@ class Prior7D:
     def marginal_sigmas(self) -> np.ndarray:
         """Per-parameter standard deviations: sqrt of diagonal of covariance."""
         return np.sqrt(np.diag(self.covariance))
-
-
-# Deprecation alias — Prior6D names the same class as Prior7D for one
-# cycle so consumers (active_fit, tests) can update their imports in
-# Pass B without breaking Pass A. The alias retires when Pass B lands.
-Prior6D = Prior7D
 
 
 def make_acca_manual_j_fallback_prior(provenance_hash: str = "") -> Prior7D:

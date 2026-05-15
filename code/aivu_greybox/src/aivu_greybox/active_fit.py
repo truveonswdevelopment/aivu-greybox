@@ -18,6 +18,9 @@ Builds on §5's machinery. Differences:
 The Laplace solver, finite-difference Hessian, and §8 identifiability-
 report builder are all reused from `passive_fit`. §6 only adds the
 phase-aware likelihood and the §6.6 phase-D diagnostic.
+
+§11.2 amendment 2026-05-15: parameter set updated from six to seven.
+Prior7D replaces Prior6D; positive_floors uses the new parameter names.
 """
 
 from __future__ import annotations
@@ -61,7 +64,7 @@ from .passive_fit import (
     build_identifiability_report,
     finite_difference_hessian,
 )
-from .passive_fit_types import Prior6D
+from .passive_fit_types import Prior7D
 from .psychrometrics import P_ATM_PHOENIX_PA, humidity_ratio
 from .records import Day5Posterior, IdentifiabilityReport, PosteriorCommon
 from ._signing_stub import (
@@ -464,7 +467,7 @@ def neg_log_likelihood_active(
     return 0.5 * chi2
 
 
-def neg_log_prior(theta: np.ndarray, prior: Prior6D) -> float:
+def neg_log_prior(theta: np.ndarray, prior: Prior7D) -> float:
     """Same as §5; reproduced here for clarity rather than cross-imported."""
     delta = theta - prior.mean
     cov_inv = np.linalg.inv(prior.covariance)
@@ -477,7 +480,7 @@ def neg_log_posterior_active(
     window: Day45TelemetryWindow,
     forward_chain: ForwardChain,
     context: HomeStaticContext,
-    prior: Prior6D,
+    prior: Prior7D,
     use_phase_d: bool = False,
 ) -> float:
     return (
@@ -576,7 +579,7 @@ def compute_phase_d_residual(
 def run_active_laplace_fit(
     obs: PhaseAwareObservations,
     window: Day45TelemetryWindow,
-    prior: Prior6D,
+    prior: Prior7D,
     forward_chain: ForwardChain,
     context: HomeStaticContext,
     num_restarts: int = LAPLACE_NUM_RESTARTS,
@@ -602,12 +605,16 @@ def run_active_laplace_fit(
     converged_flags = np.zeros(num_restarts, dtype=bool)
 
     cholesky_prior = np.linalg.cholesky(prior.covariance)
+    # Per §11.2 amendment 2026-05-15: positive_floors uses the new
+    # seven-parameter canonical names. Same physical reasoning as in
+    # passive_fit.run_laplace_fit.
     positive_floors = {
-        "R_eff": 0.5,
+        "R_opaque": 0.1,
+        "U_fenestration": 0.1,
         "C_house": 1e5,
-        "cfm50": 100.0,
+        "C_stack": 0.0,
+        "C_wind": 0.0,
         "C_w": 1.0,
-        "F_slab": 0.0,
         "ceiling_coupling_factor": 0.0,
     }
 
@@ -725,7 +732,7 @@ class ActiveFitResult:
 
 def run_active_batch_fit(
     window: Day45TelemetryWindow,
-    day2_posterior_as_prior: Prior6D,
+    day2_posterior_as_prior: Prior7D,
     day2_posterior_record_hash: str,
     day3_map_record_hash: str,
     home_id: str,

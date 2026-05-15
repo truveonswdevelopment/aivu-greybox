@@ -21,6 +21,10 @@ content than the real chain. What we are validating here is that:
   - The signed Day2Posterior record contains every §5.8-required field
   - INV-FIT12-1 (FanHeatPass prerequisite) is enforced
   - The §12 signing chain works end-to-end including threshold_attest
+
+§11.2 amendment 2026-05-15: fixtures updated to the seven-parameter
+canonical set (R_opaque, U_fenestration, C_house, C_stack, C_wind, C_w,
+ceiling_coupling_factor).
 """
 
 from __future__ import annotations
@@ -56,7 +60,7 @@ from aivu_greybox.passive_fit import (
 )
 from aivu_greybox.passive_fit_types import (
     Day12TelemetryWindow,
-    Prior6D,
+    Prior7D,
     make_acca_manual_j_fallback_prior,
 )
 from aivu_greybox.psychrometrics import (
@@ -69,6 +73,18 @@ from aivu_greybox.psychrometrics import (
 # ---------------------------------------------------------------------------
 # Synthetic Day-1-2 window generator
 # ---------------------------------------------------------------------------
+#
+# Canonical θ_true for synthesis tests (Phoenix V752-class):
+#   R_opaque                 = 1.0   (nameplate multiplier)
+#   U_fenestration           = 1.0   (nameplate multiplier)
+#   C_house                  = 5.0e6 J/K
+#   C_stack                  = 0.5   stack-driven infiltration coefficient
+#   C_wind                   = 0.1   wind-driven infiltration coefficient
+#   C_w                      = 50    moisture buffer
+#   ceiling_coupling_factor  = 0.75  per AOT §3.2 placeholder
+#
+# Module-level constant for reuse across tests.
+THETA_TRUE_V752: np.ndarray = np.array([1.0, 1.0, 5.0e6, 0.5, 0.1, 50.0, 0.75])
 
 
 def _make_synthetic_weather(n_samples: int, seed: int = 0) -> tuple:
@@ -272,14 +288,14 @@ def synthesize_day12_window(
 
 class TestTwoChannelObservationExtraction:
     def test_extracts_one_attic_observation_per_fan_on_interval(self):
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta_true = THETA_TRUE_V752
         window, _ = synthesize_day12_window(theta_true, duration_hours=2.0)
         obs = extract_two_channel_observations(window)
         # 2 hours × 1 fan-on interval/hour = 2 attic observations expected
         assert obs.t_attic_obs_c.shape[0] == 2
 
     def test_main_channel_only_post_warmup(self):
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta_true = THETA_TRUE_V752
         window, _ = synthesize_day12_window(theta_true, duration_hours=2.0)
         obs = extract_two_channel_observations(window)
         # Per fan-on interval of 600s, post-warmup = 540s of main observations
@@ -288,7 +304,7 @@ class TestTwoChannelObservationExtraction:
         assert 1050 <= obs.t_main_obs_c.shape[0] <= 1100
 
     def test_observation_indices_align_with_telemetry(self):
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta_true = THETA_TRUE_V752
         window, _ = synthesize_day12_window(theta_true, duration_hours=2.0)
         obs = extract_two_channel_observations(window)
         # Indices into the window's sample list must be valid
@@ -307,7 +323,7 @@ class TestLikelihood:
     def test_likelihood_minimum_near_true_theta(self):
         """The negative-log-likelihood should be near a minimum at θ_true
         when observations come from a forward-chain run at θ_true."""
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta_true = THETA_TRUE_V752
         # Generate a long-enough window for the test to be sensitive
         window, context = synthesize_day12_window(theta_true, duration_hours=8.0)
         obs = extract_two_channel_observations(window)
@@ -343,13 +359,13 @@ class TestClosedLoopRecovery:
         _reset_log_for_testing()
 
     def test_full_recovery_at_phoenix_july_truth(self):
-        # Phoenix-July V752-class home: typical ACCA Manual J values.
+        # Phoenix-July V752-class home: typical §11.2 amendment values.
         # 12-hour window captures a full diurnal half-cycle and exercises
-        # enough information about R_eff and ceiling_coupling_factor without
-        # incurring the cost of a 48-hour optimizer loop in the test suite.
-        # Full 48-hour validation is §10.2.4's job against the real
+        # enough information about R_opaque and ceiling_coupling_factor
+        # without incurring the cost of a 48-hour optimizer loop in the test
+        # suite. Full 48-hour validation is §10.2.4's job against the real
         # aivu_corpus, not the unit-test job.
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta_true = THETA_TRUE_V752
 
         window, context = synthesize_day12_window(
             theta_true, duration_hours=12.0, seed=2026
@@ -382,10 +398,10 @@ class TestClosedLoopRecovery:
             )
 
     def test_posterior_is_tighter_than_prior_on_well_identified_params(self):
-        """R_eff, C_house, and ceiling_coupling_factor are §5.5 "well-identified"
-        parameters under Phoenix-July passive forcing. Their posterior σ
-        should be visibly smaller than their prior σ."""
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        """R_opaque, C_house, and ceiling_coupling_factor are §5.5
+        "well-identified" parameters under Phoenix-July passive forcing.
+        Their posterior σ should be visibly smaller than their prior σ."""
+        theta_true = THETA_TRUE_V752
         window, context = synthesize_day12_window(
             theta_true, duration_hours=12.0, seed=42
         )
@@ -406,20 +422,20 @@ class TestClosedLoopRecovery:
         prior_sigmas = prior.marginal_sigmas
 
         # Stub-physics caveat: the stub forward chain delivers less
-        # informative signal on R_eff than the real Phase 1 v4.0 + Dynamic
+        # informative signal on R_opaque than the real Phase 1 v4.0 + Dynamic
         # v0.2 chain will, because the stub omits Phase 1's full envelope
         # decomposition. The realistic v0.1 expectation against `aivu_corpus`
-        # is σ_post/σ_prior < 0.5 per §5.5 on R_eff; against the stub on
+        # is σ_post/σ_prior < 0.5 per §5.5 on R_opaque; against the stub on
         # 12h, ρ < 0.99 is what the data and physics actually deliver.
         # The §10 test plan validates the real-chain expectation; this
         # unit test validates the machinery (the data moves the posterior
         # at all).
-        idx_r_eff = list(CANONICAL_PARAMETER_NAMES).index("R_eff")
-        rho_r_eff = posterior_sigmas[idx_r_eff] / prior_sigmas[idx_r_eff]
-        assert rho_r_eff < 0.99, (
-            f"R_eff posterior σ = {posterior_sigmas[idx_r_eff]:.4g} not "
-            f"meaningfully tighter than prior σ = {prior_sigmas[idx_r_eff]:.4g} "
-            f"(ρ = {rho_r_eff:.3f}). Data should move R_eff per §5.5."
+        idx_r_opaque = list(CANONICAL_PARAMETER_NAMES).index("R_opaque")
+        rho_r_opaque = posterior_sigmas[idx_r_opaque] / prior_sigmas[idx_r_opaque]
+        assert rho_r_opaque < 0.99, (
+            f"R_opaque posterior σ = {posterior_sigmas[idx_r_opaque]:.4g} not "
+            f"meaningfully tighter than prior σ = {prior_sigmas[idx_r_opaque]:.4g} "
+            f"(ρ = {rho_r_opaque:.3f}). Data should move R_opaque per §5.5."
         )
 
 
@@ -433,7 +449,7 @@ class TestConvergenceDiagnostics:
         _reset_log_for_testing()
 
     def test_diagnostics_present_in_signed_record(self):
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta_true = THETA_TRUE_V752
         window, context = synthesize_day12_window(
             theta_true, duration_hours=12.0, seed=99
         )
@@ -470,7 +486,7 @@ class TestPrerequisites:
         _reset_log_for_testing()
 
     def test_rejects_missing_fan_heat_pass(self):
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta_true = THETA_TRUE_V752
         window, context = synthesize_day12_window(theta_true, duration_hours=4.0)
         prior = make_acca_manual_j_fallback_prior()
         with pytest.raises(ValueError, match="INV-FIT12-1"):
@@ -495,7 +511,7 @@ class TestSigningChainIntegration:
         _reset_log_for_testing()
 
     def test_emits_envelope_half_initial_attestation(self):
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta_true = THETA_TRUE_V752
         window, context = synthesize_day12_window(theta_true, duration_hours=12.0, seed=7)
         prior = make_acca_manual_j_fallback_prior()
         result = run_passive_batch_fit(
@@ -513,7 +529,7 @@ class TestSigningChainIntegration:
         assert result.threshold_attestation.post_pilot_replacement_required is True
 
     def test_inclusion_proof_links_to_signed_record(self):
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta_true = THETA_TRUE_V752
         window, context = synthesize_day12_window(theta_true, duration_hours=12.0, seed=11)
         prior = make_acca_manual_j_fallback_prior()
         result = run_passive_batch_fit(
@@ -529,7 +545,7 @@ class TestSigningChainIntegration:
 
     def test_signed_record_carries_prior_provenance(self):
         """INV-FIT12-3: prior provenance is signed metadata."""
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta_true = THETA_TRUE_V752
         window, context = synthesize_day12_window(theta_true, duration_hours=12.0, seed=13)
         prior = make_acca_manual_j_fallback_prior()
         result = run_passive_batch_fit(
@@ -557,8 +573,8 @@ class TestIdentifiabilityReport:
     def setup_method(self):
         _reset_log_for_testing()
 
-    def test_report_has_all_six_parameters(self):
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+    def test_report_has_all_seven_parameters(self):
+        theta_true = THETA_TRUE_V752
         window, context = synthesize_day12_window(theta_true, duration_hours=12.0, seed=17)
         prior = make_acca_manual_j_fallback_prior()
         result = run_passive_batch_fit(
@@ -579,7 +595,7 @@ class TestIdentifiabilityReport:
             assert "D_KL_nats" in rpt.per_parameter[name]
 
     def test_hessian_spectrum_emitted(self):
-        theta_true = np.array([5.0, 5.0e6, 1800.0, 100.0, 50.0, 0.75])
+        theta_true = THETA_TRUE_V752
         window, context = synthesize_day12_window(theta_true, duration_hours=12.0, seed=19)
         prior = make_acca_manual_j_fallback_prior()
         result = run_passive_batch_fit(
