@@ -1,6 +1,6 @@
 # aivu_greybox v0.1 — §5: Days 1-2 Passive-Observation Batch Fit
 
-**Status:** Third-pass draft, 2026-05-11/12, v3.3 (additional correction from v3.2: §5.6 NUTS/HMC fallback explicitly committed as v0.2 architectural answer to non-Gaussian-posterior risk, per JDS direction 2026-05-12). Prior v3.2 changes: parameter name `κ_buffer` → `C_w` to match April 27 spec naming; algorithm class NUTS → Laplace approximation per April 27 §6.2 spec lock for v0.1; §5.7 convergence diagnostics rewritten for Laplace; §5.8 output record updated for Laplace structure. Prior v3.1 changes: softened `σ_T_attic` from 0.029°C to 0.05°C pending pilot validation of inter-probe calibration scatter; corrected `foam_coupling_factor` empirical anchor to ~2.5°F at 3pm-July from prior simulation. Anchored against §§1-4 (including §4 v3 closed earlier today) and against Phase 1 v4.0 §10 (two-state attic-main envelope model with foam coupling) and `aivu_dynamic` v0.2 (forward-chain state vector and inverse-fit parameter set). Supersedes v3.2.
+**Status:** Third-pass draft, 2026-05-11/12, v3.4 (day-numbering reconciliation pass per Reconciliation Workstream Phase 1, 2026-05-16: Day-3 references updated to Days 3-4 for the HVAC commissioning activity, with the signed map output landing at end-of-Day-4; Days 4-5 active perturbation updated to Days 5-6; clarification that Day 1 is the first measurement day, NOT the Day-0 install day; substantive content unchanged. Prior v3.3 correction from v3.2: §5.6 NUTS/HMC fallback explicitly committed as v0.2 architectural answer to non-Gaussian-posterior risk, per JDS direction 2026-05-12). Prior v3.2 changes: parameter name `κ_buffer` → `C_w` to match April 27 spec naming; algorithm class NUTS → Laplace approximation per April 27 §6.2 spec lock for v0.1; §5.7 convergence diagnostics rewritten for Laplace; §5.8 output record updated for Laplace structure. Prior v3.1 changes: softened `σ_T_attic` from 0.029°C to 0.05°C pending pilot validation of inter-probe calibration scatter; corrected `foam_coupling_factor` empirical anchor to ~2.5°F at 3pm-July from prior simulation. Anchored against §§1-4 (including §4 v3 closed earlier today) and against Phase 1 v4.0 §10 (two-state attic-main envelope model with foam coupling) and `aivu_dynamic` v0.2 (forward-chain state vector and inverse-fit parameter set). Supersedes v3.2.
 
 Material changes from v2:
 - Canonical parameter set extended from five to **six**, adding `foam_coupling_factor` to reflect the two-state attic-main envelope architecture committed in Phase 1 v4.0 §10. `aivu_dynamic` v0.2 line 35 already lists this parameter; greybox §1.2's five-parameter naming was incomplete for the Phoenix-foam-attic configuration.
@@ -14,15 +14,17 @@ Material changes from v2:
 
 §5 specifies the Day-1-2 passive-observation batch fit. The fit runs at end-of-Day-2 once 48 hours of telemetry have accumulated, against the canonical parameter set `{R_eff, C_house, cfm50, F_slab, C_w, foam_coupling_factor}`, using the locked forward chain (`aivu_physics` Phase 1 v4.0 + `aivu_dynamic` v0.2) as the likelihood and a structured Bayesian prior supplied externally.
 
-The fit produces the **end-of-Day-2 posterior**. Per §2.3 this posterior is the *envelope half, initial signing* of the Digital Birth Certificate; it is also the Bayesian prior consumed by §6's active-perturbation joint refinement on Days 4-5.
+The fit produces the **end-of-Day-2 posterior**. Per §2.3 this posterior is the *envelope half, initial signing* of the Digital Birth Certificate; it is also the Bayesian prior consumed by §6's active-perturbation joint refinement on Days 5-6.
 
-Day 3 sits between Days 1-2 and Days 4-5 and runs the HVAC operating-point sweep that calibrates the (Capacity, EER) map. §5 does not produce or consume that map. The Day 3 sweep can proceed concurrently with or after the §5 batch fit completes; the only ordering constraint is that §6 requires both the §5 posterior and the calibrated Day-3 map before it runs.
+**Day-numbering convention.** Day 1 is the first measurement day after the home is instrumented and the system is brought online. The Day-0 install day (sensor placement, Mixing Length Verification, connectivity handshake) precedes Day 1 and is out of scope for §5. The 7-Day commissioning window is Day-0 install plus Days 1-6 measurement protocol.
+
+Days 3-4 sit between Days 1-2 and Days 5-6 and run the HVAC operating-point sweep that calibrates the (Capacity, EER) map. Day 3 establishes the sweep; Day 4 repeats it for validation against Day 3, with the signed map landing at end-of-Day-4 as the HVAC half of the Digital Birth Certificate. §5 does not produce or consume that map. The Days 3-4 sweep can proceed concurrently with or after the §5 batch fit completes; the only ordering constraint is that §6 requires both the §5 posterior and the calibrated Day-4 map before it runs.
 
 ## 5.2 Operational definition
 
 During Days 1-2:
 
-- **Compressor off, heat strip off, OA dampers closed.** No equipment activity that would inject load-bearing inputs of unknown magnitude (the (Capacity, EER) map is not constructed until Day 3).
+- **Compressor off, heat strip off, OA dampers closed.** No equipment activity that would inject load-bearing inputs of unknown magnitude (the (Capacity, EER) map is not constructed until Days 3-4).
 - **AHU fan operates on a programmed mixing schedule:** 10 minutes on at minutes 0-10 of each clock-aligned hour, 50 minutes off, fan at the nominal speed used by §4 Fan-Heat. 48 fan-on intervals over the 48-hour window.
 - **All other state passive:** building experiences weather forcing, no occupants (commissioning is pre-occupancy), no commanded perturbation.
 
@@ -208,7 +210,7 @@ The §5 batch fit has eight invariants any implementation must satisfy. Part of 
 
 ## 5.10 What this section does not specify
 
-- **The Day-3 (Capacity, EER) operating-point map**, which lives in `aivu_physics` Phase 2 Layer 2/3, constructed by the HPM-side protocol runner from the Day-3 sweep telemetry against the Fan-Heat-validated terminal stack.
+- **The Day-4 (Capacity, EER) operating-point map**, which lives in `aivu_physics` Phase 2 Layer 2/3, constructed by the HPM-side protocol runner from the Days 3-4 sweep telemetry against the Fan-Heat-validated terminal stack.
 - **The §6 active-perturbation joint refinement** that consumes the end-of-Day-2 posterior as a prior and tightens the loosely-identified parameters under controlled HVAC excitation.
 - **The specific values of the ACCA-derived / EnergyPlus / PINN-derived prior** — those live in the prior-construction artifact pointed to by the provenance descriptor, not in this spec.
 - **The recursive-mode solver** for Phase 2 ongoing-Cx operation, specified in §7-§8.

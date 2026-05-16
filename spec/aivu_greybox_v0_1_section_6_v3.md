@@ -1,49 +1,49 @@
-# aivu_greybox v0.1 — §6: Days 4-5 Active-Perturbation Batch Fit
+# aivu_greybox v0.1 — §6: Days 5-6 Active-Perturbation Batch Fit
 
-**Status:** Third-pass draft, 2026-05-12. Supersedes v2 of 2026-05-11. **Material correction from v2: HPM-to-HVAC control architecture clarified.** v2 read as if the HPM issues commands directly to compressor and fan, bypassing the thermostat. Actual architecture: HPM issues commands through the EcoBee thermostat's programmable API, which transmits them to the equipment as a command pass-through without exercising EcoBee's own control logic. The protocol math is unchanged (the HPM still commands specific operating points and observes the equipment's response); the architectural framing is corrected throughout. INV-FIT45-3 reworded accordingly. Other v2 content (protocol restructured around full-capacity continuous compressor operation, hold durations 18h driven / 6h decay, aspirational-not-strict steady-state framing, fan-only-plus-solar reverse drive, `η_distribution` held at Day-1 value, Phase D as held-out validation) carried forward unchanged.
+**Status:** Third-pass draft, v3.1 (day-numbering reconciliation pass per Reconciliation Workstream Phase 1, 2026-05-16: §6's active-perturbation window updated from Days 4-5 to Days 5-6, reflecting the 7-Day commissioning protocol with HVAC commissioning expanded to Days 3-4 two-pass; Day-3 (Capacity, EER) map references updated to Day-4 to reflect that the signed HVAC record now lands at end-of-Day-4 after Day-4's validation repeat of Day-3's sweep; `Day5Posterior` → `Day6Posterior`. INV-FIT45-* names retained as opaque historical identifiers — see §9 etymology footnote. Substantive protocol content unchanged: four-phase 48-hour structure with phase durations 18h / 6h / 18h / 6h, HPM-authored commands via EcoBee API pass-through, fan-only-plus-solar reverse drive, `η_distribution` held at §4 Day-1 value, Phase D held-out validation). Prior v3 (2026-05-12) supersedes v2 of 2026-05-11. **Material correction from v2: HPM-to-HVAC control architecture clarified.** v2 read as if the HPM issues commands directly to compressor and fan, bypassing the thermostat. Actual architecture: HPM issues commands through the EcoBee thermostat's programmable API, which transmits them to the equipment as a command pass-through without exercising EcoBee's own control logic. The protocol math is unchanged (the HPM still commands specific operating points and observes the equipment's response); the architectural framing is corrected throughout. INV-FIT45-3 reworded accordingly. Other v2 content (protocol restructured around full-capacity continuous compressor operation, hold durations 18h driven / 6h decay, aspirational-not-strict steady-state framing, fan-only-plus-solar reverse drive, `η_distribution` held at Day-1 value, Phase D as held-out validation) carried forward unchanged.
 
-Anchored against §§1-5 (including §5 v3.3 closed earlier today). Inherits: §4-identified `η_distribution`, Day-3 (Capacity, EER) operating-point map calibrated by `aivu_physics` Phase 2 Layer 2/3, end-of-Day-2 posterior from §5 as the Bayesian prior, per-parameter identifiability flags from §5.
+Anchored against §§1-5 (including §5 v3.4 closed earlier today). Inherits: §4-identified `η_distribution`, Day-4 (Capacity, EER) operating-point map calibrated by `aivu_physics` Phase 2 Layer 2/3, end-of-Day-2 posterior from §5 as the Bayesian prior, per-parameter identifiability flags from §5.
 
-The Day-4-5 fit produces the **end-of-Day-5 posterior** — the final envelope baseline that anchors the *envelope half, final signing* of the Digital Birth Certificate per §2.3.
+The Days 5-6 fit produces the **end-of-Day-6 posterior** — the final envelope baseline that anchors the *envelope half, final signing* of the Digital Birth Certificate per §2.3.
 
 ---
 
 ## 6.1 Position in the commissioning sequence
 
-§6 specifies the Day-4-5 active-perturbation batch fit. It is the second and final batch fit of the 5-Day commissioning window. Where §5 identified the envelope from passive observation, §6 refines that posterior under HPM-commanded HVAC excitation (issued through the EcoBee thermostat's programmable API as a command pass-through, not via EcoBee's own control logic), exploiting the now-calibrated equipment as the active measurement source.
+§6 specifies the Days 5-6 active-perturbation batch fit. It is the second and final batch fit of the 7-Day commissioning window. Where §5 identified the envelope from passive observation, §6 refines that posterior under HPM-commanded HVAC excitation (issued through the EcoBee thermostat's programmable API as a command pass-through, not via EcoBee's own control logic), exploiting the now-calibrated equipment as the active measurement source.
 
 Three architectural distinctions from §5 govern §6's structure:
 
-**The HVAC system is now calibrated.** Day 3 produced the (Capacity, EER) operating-point map per `aivu_physics` Phase 2 Layer 2/3, signed at end-of-Day-3 as the HVAC half of the Digital Birth Certificate. §6 consumes this map as a known input — every HPM-commanded HVAC operating point during Days 4-5 has known thermodynamic effect on the conditioned space.
+**The HVAC system is now calibrated.** Days 3-4 produced the (Capacity, EER) operating-point map per `aivu_physics` Phase 2 Layer 2/3 — Day 3 establishes the sweep, Day 4 repeats it for validation against Day 3 — signed at end-of-Day-4 as the HVAC half of the Digital Birth Certificate. §6 consumes this map as a known input — every HPM-commanded HVAC operating point during Days 5-6 has known thermodynamic effect on the conditioned space.
 
 **The system is driven, not held.** §6 issues compressor and fan capacity commands to the HVAC via the HPM, transmitted through the EcoBee thermostat's programmable API as a command pass-through (the EcoBee transmits HPM-authored commands to the equipment without exercising its own thermostat control loop). The protocol drives the system to extreme operating points and observes the full driven trajectory rather than waiting for steady state. **Strict steady state is not achievable in a 48-hour window** for a residential envelope where main-space thermal time constant is ~60 hours (typical R_eff × C_house) and slab thermal time constant is 24-72 hours. The fit identifies parameters from the trajectory itself: the slow approach toward thermal balance, the fast decay components, and the differential rates between main-space and attic states. Strict steady state would simplify the energy-balance algebra; the Laplace fit against the locked forward chain does not require it.
 
-**The prior is informative.** §5's end-of-Day-2 posterior is far tighter than a cold-start prior on the well-identified parameters (`R_eff`, `C_house`, `foam_coupling_factor`) and modestly tighter on the loosely-identified ones (`F_slab`, `C_w`, `cfm50`). §6 inherits this and produces a posterior that combines passive (Days 1-2) and active (Days 4-5) information, not a fresh active-only fit. Per-parameter identifiability flags from §5 propagate forward as input to the §6 fit.
+**The prior is informative.** §5's end-of-Day-2 posterior is far tighter than a cold-start prior on the well-identified parameters (`R_eff`, `C_house`, `foam_coupling_factor`) and modestly tighter on the loosely-identified ones (`F_slab`, `C_w`, `cfm50`). §6 inherits this and produces a posterior that combines passive (Days 1-2) and active (Days 5-6) information, not a fresh active-only fit. Per-parameter identifiability flags from §5 propagate forward as input to the §6 fit.
 
-## 6.2 The Days 4-5 protocol
+## 6.2 The Days 5-6 protocol
 
-The protocol is four phases across 48 hours, each driven by HPM-authored commands to the compressor and fan (issued through the EcoBee API as a command pass-through), with the equipment operated at known states from the Day-3 (Capacity, EER) operating-point map.
+The protocol is four phases across 48 hours, each driven by HPM-authored commands to the compressor and fan (issued through the EcoBee API as a command pass-through), with the equipment operated at known states from the Day-4 (Capacity, EER) operating-point map.
 
-**Pre-condition.** Per INV-FIT45-1 and INV-FIT45-2, §6 requires a valid `Day2Posterior` record and a valid Day-3-signed operating-point map. The Days 4-5 window begins at the start of Day 4 (midnight local time, Phoenix).
+**Pre-condition.** Per INV-FIT45-1 and INV-FIT45-2, §6 requires a valid `Day2Posterior` record and a valid Day-4-signed operating-point map. The Days 5-6 window begins at the start of Day 5 (midnight local time, Phoenix).
 
 ### 6.2.1 Phase A — Cooling drive (18 hours)
 
-**Window:** Day 4, 00:00 - 18:00 local time.
+**Window:** Day 5, 00:00 - 18:00 local time.
 
 **HPM commands:** Compressor at full capacity continuously; fan at nominal speed continuously (no mixing schedule — the fan runs without interruption throughout the phase, supporting continuous compressor operation).
 
-**Trajectory.** Indoor temperature falls from whatever Day-3-end value through the equipment's reachable range. Phoenix-July typical: indoor reaches 16-22°C depending on the envelope's actual `R_eff` and the equipment's full-capacity output at the prevailing outdoor and return-air conditions. Indoor humidity ratio falls toward the coil's effective dewpoint output under continuous dehumidification. The slab thermal mass dominates the slow component of the indoor-temperature trajectory; by hour 14-18, indoor temperature is approaching a quasi-asymptote with the slab still slowly cooling toward its own ground-coupled equilibrium.
+**Trajectory.** Indoor temperature falls from whatever Day-4-end value through the equipment's reachable range. Phoenix-July typical: indoor reaches 16-22°C depending on the envelope's actual `R_eff` and the equipment's full-capacity output at the prevailing outdoor and return-air conditions. Indoor humidity ratio falls toward the coil's effective dewpoint output under continuous dehumidification. The slab thermal mass dominates the slow component of the indoor-temperature trajectory; by hour 14-18, indoor temperature is approaching a quasi-asymptote with the slab still slowly cooling toward its own ground-coupled equilibrium.
 
 **Architectural purpose:**
-- **`R_eff`** — high-SNR identification from the sustained ~18-24°C indoor-outdoor differential. The trajectory toward thermal balance pins `R_eff` to the precision of the Day-3 map calibration and the §4 fan-heat calibration.
-- **`C_w`** — continuous dehumidification produces a clean latent-side balance. With no occupants, no appliances, and OA dampers closed, the only moisture sources are infiltration (driven by `cfm50` and outdoor humidity) and slow desorption from construction materials. The latent capacity from the Day-3 map combined with the measured indoor `W` trajectory identifies `C_w`.
+- **`R_eff`** — high-SNR identification from the sustained ~18-24°C indoor-outdoor differential. The trajectory toward thermal balance pins `R_eff` to the precision of the Day-4 map calibration and the §4 fan-heat calibration.
+- **`C_w`** — continuous dehumidification produces a clean latent-side balance. With no occupants, no appliances, and OA dampers closed, the only moisture sources are infiltration (driven by `cfm50` and outdoor humidity) and slow desorption from construction materials. The latent capacity from the Day-4 map combined with the measured indoor `W` trajectory identifies `C_w`.
 - **`cfm50`** — the cooling drive's continuous OA-dampers-closed operation creates a regime where infiltration is the *only* outdoor-air path. The latent-side balance plus the conduction-vs-infiltration split in the sensible balance separate `cfm50` from `R_eff` cleanly.
 
 **Continuous-fan observation regime.** During Phase A the fan runs continuously, so the §5 fan-on-warmup attic-observation window is not periodically available. Terminal probes during Phase A read supply-side delivered air (related to return-plenum reading by the §4-identified `η_distribution`); the return-plenum probe reads volume-averaged main-conditioned-space air. Attic temperature is not directly observed during Phase A but is propagated by the forward chain from §5's Day-2 posterior on `foam_coupling_factor`. Phase B's decay produces fresh direct attic observations.
 
 ### 6.2.2 Phase B — Cooling decay (6 hours)
 
-**Window:** Day 4, 18:00 - 24:00 local time.
+**Window:** Day 5, 18:00 - 24:00 local time.
 
 **HPM commands:** Compressor off; fan on §5 mixing schedule (10 min on at minutes 0-10 of each hour, 50 min off).
 
@@ -55,7 +55,7 @@ The protocol is four phases across 48 hours, each driven by HPM-authored command
 
 ### 6.2.3 Phase C — Reverse drive (18 hours)
 
-**Window:** Day 5, 00:00 - 18:00 local time.
+**Window:** Day 6, 00:00 - 18:00 local time.
 
 **HPM commands:** Compressor off; fan at extended duty cycle (50 minutes on at minutes 0-50 of each hour, 10 min off) at nominal speed.
 
@@ -70,7 +70,7 @@ The protocol is four phases across 48 hours, each driven by HPM-authored command
 
 ### 6.2.4 Phase D — Final closing observation (6 hours)
 
-**Window:** Day 5, 18:00 - 24:00 local time.
+**Window:** Day 6, 18:00 - 24:00 local time.
 
 **HPM commands:** Compressor off; fan on §5 mixing schedule (10 min on / 50 min off).
 
@@ -82,16 +82,16 @@ The protocol is four phases across 48 hours, each driven by HPM-authored command
 
 | Phase | Window | HPM compressor | HPM fan | Identifies primarily |
 |---|---|---|---|---|
-| A: Cooling drive | Day 4, 00:00-18:00 (18h) | Full capacity | Continuous nominal | `R_eff`, `C_w`, `cfm50` |
-| B: Cooling decay | Day 4, 18:00-24:00 (6h) | Off | Mixing 10/50 | `C_house`, `foam_coupling_factor` |
-| C: Reverse drive | Day 5, 00:00-18:00 (18h) | Off | Extended 50/10 | `F_slab`, refines `cfm50` and `C_w` |
-| D: Final close | Day 5, 18:00-24:00 (6h) | Off | Mixing 10/50 | Validation against held-out data |
+| A: Cooling drive | Day 5, 00:00-18:00 (18h) | Full capacity | Continuous nominal | `R_eff`, `C_w`, `cfm50` |
+| B: Cooling decay | Day 5, 18:00-24:00 (6h) | Off | Mixing 10/50 | `C_house`, `foam_coupling_factor` |
+| C: Reverse drive | Day 6, 00:00-18:00 (18h) | Off | Extended 50/10 | `F_slab`, refines `cfm50` and `C_w` |
+| D: Final close | Day 6, 18:00-24:00 (6h) | Off | Mixing 10/50 | Validation against held-out data |
 
 Total: 48 hours, fitting within the 24-hour-wall-clock-fit ceiling per §3.2. The Laplace optimization consumes the entire 48-hour trajectory as one observation set; phases are not fit separately, only operated separately.
 
 ## 6.3 The fit problem
 
-§6 performs Bayesian inverse identification of the six canonical envelope parameters from 48 hours of 1 Hz Days 4-5 telemetry, with the §5 end-of-Day-2 posterior as the prior, the Day-3-calibrated equipment as the known excitation source, and the same two-channel observation model as §5 — with the channel availability varying across phases per §6.2.
+§6 performs Bayesian inverse identification of the six canonical envelope parameters from 48 hours of 1 Hz Days 5-6 telemetry, with the §5 end-of-Day-2 posterior as the prior, the Day-4-calibrated equipment as the known excitation source, and the same two-channel observation model as §5 — with the channel availability varying across phases per §6.2.
 
 **The state vector and forward model.** Same two-state envelope as §5: `aivu_dynamic.dynamic.run(θ, u_meas, w_meas)` propagating `(T_main, W_main, T_attic, W_attic)`. The canonical parameter vector unchanged: `θ = (R_eff, C_house, cfm50, F_slab, C_w, foam_coupling_factor)`.
 
@@ -103,7 +103,7 @@ Q̇_HVAC,latent(t)    =  Capacity_latent(T_out(t), T_return(t), W_return(t), m_a
 Q̇_fan(t)            =  η̂_distribution · P_fan(t)
 ```
 
-(Compressor at full capacity = cooling_fraction 1.0; both sensible and latent capacities at the operating point from the Day-3 map; fan continuous.)
+(Compressor at full capacity = cooling_fraction 1.0; both sensible and latent capacities at the operating point from the Day-4 map; fan continuous.)
 
 During Phases B and D:
 
@@ -165,7 +165,7 @@ Per-parameter identifiability flags from §5 propagate forward.
 
 ## 6.4 Identifiability under the §6 protocol
 
-The protocol is structured against specific identifiability gains. Expected posterior tightness at end-of-Day-5, compounding §5 prior with §6 data:
+The protocol is structured against specific identifiability gains. Expected posterior tightness at end-of-Day-6, compounding §5 prior with §6 data:
 
 | Parameter | §5 (passive) | §6 (active, this protocol) | Primary phase |
 |---|---|---|---|
@@ -178,7 +178,7 @@ The protocol is structured against specific identifiability gains. Expected post
 
 Substantial tightening across all six parameters. The largest absolute improvements are on `cfm50` (30% → 8%, ~4× tightening) and `F_slab` (15% → 5%, 3× tightening) — the two parameters that passive observation cannot resolve.
 
-**On joint identifiability of `R_eff` and `η_distribution`.** Phase A's continuous-fan continuous-compressor operation involves both a known coil capacity (Day-3 map) and a known fan-heat injection (§4 `η_distribution`). If §6 attempts to jointly identify `η_distribution` along with `R_eff`, the two parameters trade off against each other along an under-determined ridge — both affect the relationship between equipment electrical input and indoor temperature. **§6 v0.1 holds `η̂_distribution` at the §4-identified Day-1 value** and lets §7 ongoing-Cx track its drift over months. Joint identification within §6 is deferred to v0.2 if a structurally distinct excitation can be designed that breaks the degeneracy (e.g., a Phase C-style fan-only-no-compressor regime is necessary to identify `η_distribution` independent of compressor output, but adding it to the §6 fit with only ~5 hours of distinct data would not provide decisive SNR).
+**On joint identifiability of `R_eff` and `η_distribution`.** Phase A's continuous-fan continuous-compressor operation involves both a known coil capacity (Day-4 map) and a known fan-heat injection (§4 `η_distribution`). If §6 attempts to jointly identify `η_distribution` along with `R_eff`, the two parameters trade off against each other along an under-determined ridge — both affect the relationship between equipment electrical input and indoor temperature. **§6 v0.1 holds `η̂_distribution` at the §4-identified Day-1 value** and lets §7 ongoing-Cx track its drift over months. Joint identification within §6 is deferred to v0.2 if a structurally distinct excitation can be designed that breaks the degeneracy (e.g., a Phase C-style fan-only-no-compressor regime is necessary to identify `η_distribution` independent of compressor output, but adding it to the §6 fit with only ~5 hours of distinct data would not provide decisive SNR).
 
 **Identifiability collapse detection (§8) runs after §6 fit completes.** Any parameter that remains effectively prior-only after §6 indicates a structural identifiability gap. The resulting posterior is signed with the identifiability-collapse flag preserved, and downstream consumers see exactly which parameters are committed at high confidence and which are not.
 
@@ -188,7 +188,7 @@ Substantial tightening across all six parameters. The largest absolute improveme
 
 §6 runs in **batch mode**, Laplace approximation per §5.6. Computational budget: 24-hour wall-clock ceiling per §3.2, expected actual time in minutes on representative HPM hardware.
 
-**One operational difference from §5.** The §6 likelihood involves evaluating the Day-3 (Capacity, EER) operating-point map at each Phase A sample (~65k samples across 18 hours). Bi-quadratic interpolation per `aivu_physics` Phase 2 Increment 8 is a fast operation; total map-evaluation cost across all phases is bounded and well within the wall-clock ceiling.
+**One operational difference from §5.** The §6 likelihood involves evaluating the Day-4 (Capacity, EER) operating-point map at each Phase A sample (~65k samples across 18 hours). Bi-quadratic interpolation per `aivu_physics` Phase 2 Increment 8 is a fast operation; total map-evaluation cost across all phases is bounded and well within the wall-clock ceiling.
 
 ## 6.6 Convergence and quality diagnostics
 
@@ -200,13 +200,13 @@ Two §6-specific diagnostics added:
 
 - **Phase A asymptote check.** During the final 2-3 hours of Phase A, indoor temperature should be approaching a quasi-asymptote (rate of change below 0.1°C/hour). If the trajectory is still changing at a higher rate, Phase A duration was insufficient for the slow components to manifest. Emitted as a diagnostic. Future protocol-iteration question; does not halt the v0.1 fit.
 
-## 6.7 Output: the end-of-Day-5 signed posterior record
+## 6.7 Output: the end-of-Day-6 signed posterior record
 
-On successful fit completion, §6 emits a `Day5Posterior` record. Structure identical to §5's `Day2Posterior` (§5.8), with these additions:
+On successful fit completion, §6 emits a `Day6Posterior` record. Structure identical to §5's `Day2Posterior` (§5.8), with these additions:
 
 - **Reference to the `Day2Posterior` record** (by content-addressed hash) — explicit chain through the prior.
-- **Reference to the Day-3 (Capacity, EER) operating-point map signing record** (by content-addressed hash) — explicit chain through the HVAC calibration.
-- **Excitation protocol record** — the actual HPM compressor and fan commands executed during Days 4-5, including timestamps of phase transitions and any deviations from the programmed protocol (e.g., if a hardware fault forced an early compressor shutoff in Phase A). Signed into the record.
+- **Reference to the Day-4 (Capacity, EER) operating-point map signing record** (by content-addressed hash) — explicit chain through the HVAC calibration.
+- **Excitation protocol record** — the actual HPM compressor and fan commands executed during Days 5-6, including timestamps of phase transitions and any deviations from the programmed protocol (e.g., if a hardware fault forced an early compressor shutoff in Phase A). Signed into the record.
 - **Phase D held-out residual** per §6.6.
 - **Phase A asymptote diagnostic** per §6.6.
 
@@ -218,22 +218,22 @@ The §6 batch fit has seven invariants any implementation must satisfy.
 
 **INV-FIT45-1 — `Day2Posterior` prerequisite.** §6 MUST NOT run without a valid `Day2Posterior` record from §5 as the prior.
 
-**INV-FIT45-2 — Day-3 map prerequisite.** §6 MUST NOT run without a valid Day-3-signed (Capacity, EER) operating-point map. The HVAC excitation `u_meas` for Phase A is computed from that map; without it, `u_meas` is not defined.
+**INV-FIT45-2 — Day-4 map prerequisite.** §6 MUST NOT run without a valid Day-4-signed (Capacity, EER) operating-point map. The HVAC excitation `u_meas` for Phase A is computed from that map; without it, `u_meas` is not defined.
 
-**INV-FIT45-3 — HPM-authored command authority via thermostat API pass-through.** §6's protocol requires that the HPM can issue specific compressor and fan capacity commands (such as "compressor stage 2 ON, fan high") that the thermostat transmits to the equipment as a command pass-through, without the thermostat exercising its own setpoint-tracking control loop during the 48-hour Days 4-5 window. For the Phoenix pilot this is provided by the EcoBee thermostat's programmable API. If a deployment uses a thermostat that does not expose a programmable command-pass-through API (e.g., a building where the thermostat is the only HVAC controller available with no programmable interface, or a commercial building with a proprietary BAS controller), §6 v0.1 cannot run; a v0.2 fallback protocol using setpoint-trajectory-driven excitation would need to be specified.
+**INV-FIT45-3 — HPM-authored command authority via thermostat API pass-through.** §6's protocol requires that the HPM can issue specific compressor and fan capacity commands (such as "compressor stage 2 ON, fan high") that the thermostat transmits to the equipment as a command pass-through, without the thermostat exercising its own setpoint-tracking control loop during the 48-hour Days 5-6 window. For the Phoenix pilot this is provided by the EcoBee thermostat's programmable API. If a deployment uses a thermostat that does not expose a programmable command-pass-through API (e.g., a building where the thermostat is the only HVAC controller available with no programmable interface, or a commercial building with a proprietary BAS controller), §6 v0.1 cannot run; a v0.2 fallback protocol using setpoint-trajectory-driven excitation would need to be specified.
 
-**INV-FIT45-4 — Excitation protocol adherence.** The HPM commands actually issued during Days 4-5 MUST match the programmed phase schedule within tolerance (default ±15 min on phase transitions; compressor and fan commands themselves are deterministic from the protocol). Deviations are recorded into the signed record; large deviations (e.g., hardware fault) are noted as caveats on the posterior's interpretation.
+**INV-FIT45-4 — Excitation protocol adherence.** The HPM commands actually issued during Days 5-6 MUST match the programmed phase schedule within tolerance (default ±15 min on phase transitions; compressor and fan commands themselves are deterministic from the protocol). Deviations are recorded into the signed record; large deviations (e.g., hardware fault) are noted as caveats on the posterior's interpretation.
 
-**INV-FIT45-5 — Prior provenance chain preserved.** The §6 posterior record MUST reference the §5 posterior's prior-provenance descriptor (per §5.4) and the §5 posterior's own hash. An external verifier examining a `Day5Posterior` MUST be able to trace the full prior-provenance chain.
+**INV-FIT45-5 — Prior provenance chain preserved.** The §6 posterior record MUST reference the §5 posterior's prior-provenance descriptor (per §5.4) and the §5 posterior's own hash. An external verifier examining a `Day6Posterior` MUST be able to trace the full prior-provenance chain.
 
-**INV-FIT45-6 — Convergence diagnostics gate the signing.** Same as INV-FIT12-4 for §5. No `Day5Posterior` record is emitted (and therefore no Digital Birth Certificate envelope-half-final signing occurs) if convergence or quality diagnostics fail per §6.6.
+**INV-FIT45-6 — Convergence diagnostics gate the signing.** Same as INV-FIT12-4 for §5. No `Day6Posterior` record is emitted (and therefore no Digital Birth Certificate envelope-half-final signing occurs) if convergence or quality diagnostics fail per §6.6.
 
 **INV-FIT45-7 — `η_distribution` held at Day-1 value.** §6 v0.1 MUST NOT attempt to jointly identify `η_distribution` along with the six canonical envelope parameters. The value used is the §4-identified Day-1 value, propagated through the fit as a known input. Joint identification is a v0.2 question; attempting it in v0.1 risks an `R_eff × η_distribution` degeneracy that the Phase A excitation alone cannot resolve.
 
 ## 6.9 What this section does not specify
 
-- **The Day-3 (Capacity, EER) operating-point map construction.** `aivu_physics` Phase 2 Layer 2/3 territory.
-- **The operational protocol for the technician** during Days 4-5 — what to monitor, what to escalate, how to respond to hardware faults during the 48-hour window. Operational protocol document territory.
+- **The Day-4 (Capacity, EER) operating-point map construction.** `aivu_physics` Phase 2 Layer 2/3 territory.
+- **The operational protocol for the technician** during Days 5-6 — what to monitor, what to escalate, how to respond to hardware faults during the 48-hour window. Operational protocol document territory.
 - **The recursive-mode solver** for Phase 2 ongoing-Cx operation. Specified in §7-§8.
 - **Joint refinement of `η_distribution`.** §6 v0.1 holds at Day-1 value; joint identification deferred to v0.2 per INV-FIT45-7.
 - **Protocol parameters as configuration.** Phase durations (18h / 6h / 18h / 6h), compressor command (full capacity), fan duty cycles (continuous / 10-50 / 50-10 / 10-50), and tolerances (±15 min phase transitions, ±5% Phase D residual, 0.1°C/hr Phase A asymptote rate) are configuration defaults pinned for the Phoenix-pilot configuration. Other climate zones or builder configurations may want different values; the §6 spec's structure is preserved across configurations, only the numerical defaults change.
@@ -241,4 +241,4 @@ The §6 batch fit has seven invariants any implementation must satisfy.
 
 ---
 
-*End of §6 third-pass draft v3. Configuration defaults: four-phase protocol (Phase A cooling drive 18h at full capacity continuous fan; Phase B cooling decay 6h with mixing fan; Phase C reverse drive 18h fan-only extended duty no compressor; Phase D final closing observation 6h mixing fan); Phase A asymptote check rate threshold 0.1°C/hr; Phase D residual tolerance 5% relative; protocol-adherence ±15 min on transitions; `σ_T_attic_degraded = 0.10°C` for Phase C samples. HPM-authored commands transmitted to equipment via EcoBee API as command pass-through (architectural correction 2026-05-12). Six-parameter canonical set unchanged: `{R_eff, C_house, cfm50, F_slab, C_w, foam_coupling_factor}`. Expected end-of-Day-5 posterior tightness ranges per parameter (1% / 1.5% / 8% / 5% / 8% / 4%) — substantial tightening from §5 (5% / 5% / 30% / 15% / 25% / 15%). `η_distribution` held at §4 Day-1 value per INV-FIT45-7; joint refinement deferred to v0.2. §7 (recursive-mode Phase 2 solver) opens next.*
+*End of §6 third-pass draft v3.1. Configuration defaults: four-phase protocol (Phase A cooling drive 18h at full capacity continuous fan; Phase B cooling decay 6h with mixing fan; Phase C reverse drive 18h fan-only extended duty no compressor; Phase D final closing observation 6h mixing fan); Phase A asymptote check rate threshold 0.1°C/hr; Phase D residual tolerance 5% relative; protocol-adherence ±15 min on transitions; `σ_T_attic_degraded = 0.10°C` for Phase C samples. HPM-authored commands transmitted to equipment via EcoBee API as command pass-through (architectural correction 2026-05-12). Day-numbering reconciled to 7-Day protocol (Days 5-6 active perturbation, Day-4 HVAC map prerequisite, `Day6Posterior` output) per Reconciliation Workstream Phase 1, 2026-05-16. Six-parameter canonical set unchanged: `{R_eff, C_house, cfm50, F_slab, C_w, foam_coupling_factor}`. Expected end-of-Day-6 posterior tightness ranges per parameter (1% / 1.5% / 8% / 5% / 8% / 4%) — substantial tightening from §5 (5% / 5% / 30% / 15% / 25% / 15%). `η_distribution` held at §4 Day-1 value per INV-FIT45-7; joint refinement deferred to v0.2. §7 (recursive-mode Phase 2 solver) opens next.*

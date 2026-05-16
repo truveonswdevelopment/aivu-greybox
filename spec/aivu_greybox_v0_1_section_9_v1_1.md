@@ -1,6 +1,6 @@
 # `aivu_greybox` v0.1 — Section 9: Invariants consolidation
 
-**Status:** v1.1 draft, 2026-05-13 (revision: §12 invariants folded in upon §12 v1 closure same day). Anchored against §§1-12 (§§1-3 v0.1.1, §4 v3, §5 v3.3, §6 v3, §8 v1, §10 v1, §11 v1, §12 v1 closed; §7 pending). §9 enumerates the full canonical invariant set referenced from §1.4 deliverables and §10 test plan. It introduces no new invariants of its own; updates to an invariant happen in its origin section, and §9 follows by reference.
+**Status:** v1.2 (day-numbering reconciliation pass per Reconciliation Workstream Phase 1, 2026-05-16: §6 invariant block header "Days 4-5" → "Days 5-6"; INV-FIT45-2 "Day-3 map" → "Day-4 map"; INV-FIT45-3 / INV-FIT45-4 "Days 4-5 window" → "Days 5-6 window"; INV-FIT45-5 / INV-FIT45-6 `Day5Posterior` → `Day6Posterior`; INV-SIGN12-1 "Day-5 posterior records" → "Day-6 posterior records"; INV-SIGN12-3 "Day-3 HVAC half" → "Day-4 HVAC half" and "Day-5 envelope-final" → "Day-6 envelope-final"; INV-FH-4 sequence updated. INV-FIT12-* and INV-FIT45-* block names retained as opaque historical identifiers — see "Identifier etymology note" below. Prior v1.1 draft 2026-05-13: §12 invariants folded in upon §12 v1 closure same day). Anchored against §§1-12 (§§1-3 v0.1.1, §4 v3, §5 v3.4, §6 v3.1, §8 v1.1, §10 v1.2, §11 v1.1, §12 v1.1 closed; §7 v1 drafted 2026-05-13 — invariants slot below remains as placeholder pending a separate fold-in pass). §9 enumerates the full canonical invariant set referenced from §1.4 deliverables and §10 test plan. It introduces no new invariants of its own; updates to an invariant happen in its origin section, and §9 follows by reference.
 
 ---
 
@@ -15,6 +15,10 @@ Two views are emitted:
 - **§9.2 — Origin-section enumeration.** The canonical list, grouped by the section that authors each invariant. This is the view §10 test plan iterates over.
 - **§9.3 — Cross-cutting access patterns.** Invariants grouped by theme (signing chain, protocol adherence, prior provenance, identifiability, command authority, observation completeness). This is the view a reader uses to answer "what does greybox guarantee about signing?" without reading five sections.
 
+### Identifier etymology note
+
+Two invariant block names — `INV-FIT12-*` and `INV-FIT45-*` — carry day-pair etymologies from the pre-reconciliation protocol (passive batch fit on Days 1-2, active perturbation on Days 4-5). The 2026-05-16 day-numbering reconciliation moved the active-perturbation window from Days 4-5 to Days 5-6 (and HVAC commissioning from Day 3 to Days 3-4 with the signed map landing at end-of-Day-4), but the `INV-FIT45-*` block name was retained as an opaque historical identifier rather than renamed to `INV-FIT56-*`. Reasoning: external code, test fixtures, downstream documents, and the audit inventory all reference the existing names; renaming would create more churn than it saves, and the names function as stable identifier strings whose specific day-pair etymology is no longer load-bearing. `INV-FIT12-*` is untouched by the reconciliation (Days 1-2 passive remains Days 1-2). A future v0.2 rename, if it earns its place, is non-blocking and would be handled per the identifier-retirement rule in §9.4.
+
 ---
 
 ## 9.2 Origin-section enumeration
@@ -27,7 +31,7 @@ Two views are emitted:
 
 **INV-FH-3 — Records are complete and externally verifiable.** Every `FanHeatPass` and `FanHeatFail` record MUST contain the full set of fields in §4.5, committed via the `aivu_integrity` API. An external verifier holding the HPM's public key, the relevant 1 Hz telemetry packets (served on demand per §2.5), and the MMR inclusion proofs MUST be able to re-derive `η̂_distribution` and `R_FH` and re-check both pass conditions independently. No part of the check may rely on intermediate state outside the record.
 
-**INV-FH-4 — `η_distribution` identified by Fan-Heat is the Day-1 prior for §6, not the final value.** The identified `η̂_distribution` and its uncertainty established at Day-1 MUST be consumed by §6 as the prior for active-perturbation joint refinement, not treated as a fixed parameter for the remainder of the 5-Day window. Treating Fan-Heat's identification as final would discard the joint-identification structure that makes envelope and equipment parameters independently observable under §6 excitation. The successive refinement Day-1 → Day-1-2 (passive) → Day-4-5 (active) is the architectural sequence; each stage tightens the prior for the next.
+**INV-FH-4 — `η_distribution` identified by Fan-Heat is the Day-1 prior for §6, not the final value.** The identified `η̂_distribution` and its uncertainty established at Day-1 MUST be consumed by §6 as the prior for active-perturbation joint refinement, not treated as a fixed parameter for the remainder of the 7-Day window. Treating Fan-Heat's identification as final would discard the joint-identification structure that makes envelope and equipment parameters independently observable under §6 excitation. The successive refinement Day-1 → Day-1-2 (passive) → Days 5-6 (active) is the architectural sequence; each stage tightens the prior for the next.
 
 ### From §5 — Day-1-2 passive batch fit (INV-FIT12-1 through INV-FIT12-8)
 
@@ -47,19 +51,19 @@ Two views are emitted:
 
 **INV-FIT12-8 — Two-channel likelihood structure.** The §5 likelihood MUST be evaluated on both the attic-observation channel (warmup-window terminal probes) and the main-observation channel (post-warmup return-plenum probe), per §5.3. A §5 implementation that consumes only the main channel and discards the attic channel is non-compliant; the two-state envelope model in Phase 1 v4.0 / `aivu_dynamic` v0.2 requires both for identifiability.
 
-### From §6 — Day-4-5 active-perturbation batch fit (INV-FIT45-1 through INV-FIT45-7)
+### From §6 — Days 5-6 active-perturbation batch fit (INV-FIT45-1 through INV-FIT45-7)
 
 **INV-FIT45-1 — `Day2Posterior` prerequisite.** §6 MUST NOT run without a valid `Day2Posterior` record from §5 as the prior.
 
-**INV-FIT45-2 — Day-3 map prerequisite.** §6 MUST NOT run without a valid Day-3-signed (Capacity, EER) operating-point map. The HVAC excitation `u_meas` for Phase A is computed from that map; without it, `u_meas` is not defined.
+**INV-FIT45-2 — Day-4 map prerequisite.** §6 MUST NOT run without a valid Day-4-signed (Capacity, EER) operating-point map. The HVAC excitation `u_meas` for Phase A is computed from that map; without it, `u_meas` is not defined.
 
-**INV-FIT45-3 — HPM-authored command authority via thermostat API pass-through.** §6's protocol requires that the HPM can issue specific compressor and fan capacity commands (such as "compressor stage 2 ON, fan high") that the thermostat transmits to the equipment as a command pass-through, without the thermostat exercising its own setpoint-tracking control loop during the 48-hour Days 4-5 window. For the Phoenix pilot this is provided by the EcoBee thermostat's programmable API. If a deployment uses a thermostat that does not expose a programmable command-pass-through API (e.g., a building where the thermostat is the only HVAC controller available with no programmable interface, or a commercial building with a proprietary BAS controller), §6 v0.1 cannot run; a v0.2 fallback protocol using setpoint-trajectory-driven excitation would need to be specified.
+**INV-FIT45-3 — HPM-authored command authority via thermostat API pass-through.** §6's protocol requires that the HPM can issue specific compressor and fan capacity commands (such as "compressor stage 2 ON, fan high") that the thermostat transmits to the equipment as a command pass-through, without the thermostat exercising its own setpoint-tracking control loop during the 48-hour Days 5-6 window. For the Phoenix pilot this is provided by the EcoBee thermostat's programmable API. If a deployment uses a thermostat that does not expose a programmable command-pass-through API (e.g., a building where the thermostat is the only HVAC controller available with no programmable interface, or a commercial building with a proprietary BAS controller), §6 v0.1 cannot run; a v0.2 fallback protocol using setpoint-trajectory-driven excitation would need to be specified.
 
-**INV-FIT45-4 — Excitation protocol adherence.** The HPM commands actually issued during Days 4-5 MUST match the programmed phase schedule within tolerance (default ±15 min on phase transitions; compressor and fan commands themselves are deterministic from the protocol). Deviations are recorded into the signed record; large deviations (e.g., hardware fault) are noted as caveats on the posterior's interpretation.
+**INV-FIT45-4 — Excitation protocol adherence.** The HPM commands actually issued during Days 5-6 MUST match the programmed phase schedule within tolerance (default ±15 min on phase transitions; compressor and fan commands themselves are deterministic from the protocol). Deviations are recorded into the signed record; large deviations (e.g., hardware fault) are noted as caveats on the posterior's interpretation.
 
-**INV-FIT45-5 — Prior provenance chain preserved.** The §6 posterior record MUST reference the §5 posterior's prior-provenance descriptor (per §5.4) and the §5 posterior's own hash. An external verifier examining a `Day5Posterior` MUST be able to trace the full prior-provenance chain.
+**INV-FIT45-5 — Prior provenance chain preserved.** The §6 posterior record MUST reference the §5 posterior's prior-provenance descriptor (per §5.4) and the §5 posterior's own hash. An external verifier examining a `Day6Posterior` MUST be able to trace the full prior-provenance chain.
 
-**INV-FIT45-6 — Convergence diagnostics gate the signing.** Same as INV-FIT12-4 for §5. No `Day5Posterior` record is emitted (and therefore no Digital Birth Certificate envelope-half-final signing occurs) if convergence or quality diagnostics fail per §6.6.
+**INV-FIT45-6 — Convergence diagnostics gate the signing.** Same as INV-FIT12-4 for §5. No `Day6Posterior` record is emitted (and therefore no Digital Birth Certificate envelope-half-final signing occurs) if convergence or quality diagnostics fail per §6.6.
 
 **INV-FIT45-7 — `η_distribution` held at Day-1 value.** §6 v0.1 MUST NOT attempt to jointly identify `η_distribution` along with the six canonical envelope parameters. The value used is the §4-identified Day-1 value, propagated through the fit as a known input. Joint identification is a v0.2 question; attempting it in v0.1 risks an `R_eff × η_distribution` degeneracy that the Phase A excitation alone cannot resolve.
 
@@ -87,11 +91,11 @@ Two views are emitted:
 
 ### From §12 — Signing chain (INV-SIGN12-1 through INV-SIGN12-7)
 
-**INV-SIGN12-1 — Every record `aivu_greybox` emits MUST be signed before it leaves the package boundary.** No record is emitted unsigned. The records covered are: telemetry packets (continuous), Fan-Heat Pass/Fail records (§4), Day-2 posterior records (§5), Day-5 posterior records (§6), and the §8 identifiability reports co-signed with their parent posterior. Implementations that emit any of these records without invoking `sign_record` are non-compliant.
+**INV-SIGN12-1 — Every record `aivu_greybox` emits MUST be signed before it leaves the package boundary.** No record is emitted unsigned. The records covered are: telemetry packets (continuous), Fan-Heat Pass/Fail records (§4), Day-2 posterior records (§5), Day-6 posterior records (§6), and the §8 identifiability reports co-signed with their parent posterior. Implementations that emit any of these records without invoking `sign_record` are non-compliant.
 
 **INV-SIGN12-2 — Every signed record MUST be appended to the local signed log before being consumed by a downstream call site.** `sign_record` and `commit_to_log` are paired; signing without appending leaves the record unverifiable to any later consumer. The sequence is `sign_record` → `commit_to_log`, not reversed and not separated.
 
-**INV-SIGN12-3 — Birth Certificate half-signing moments MUST invoke `threshold_attest` with the correct `AttestationMoment` identifier.** Three moments exist: Day-3 HVAC half, Day-2 envelope-initial, Day-5 envelope-final. Each is identified by its enum value; the value is part of the threshold-attestation payload. Wrong-moment attestation (signing the Day-2 posterior with the `envelope_half_final` moment label) is non-compliant.
+**INV-SIGN12-3 — Birth Certificate half-signing moments MUST invoke `threshold_attest` with the correct `AttestationMoment` identifier.** Three moments exist: Day-4 HVAC half, Day-2 envelope-initial, Day-6 envelope-final. Each is identified by its enum value; the value is part of the threshold-attestation payload. Wrong-moment attestation (signing the Day-2 posterior with the `envelope_half_final` moment label) is non-compliant.
 
 **INV-SIGN12-4 — The stub-attestation flag MUST be honest.** v0.1 pilot ships with `threshold_attest` returning stub-attestation. The returned `ThresholdAttestation` payload MUST carry the "stub-attestation, post-pilot replacement required" flag visible to any consumer parsing the record. A v0.1 implementation that emits a stub-attestation without the flag is non-compliant. The flag does NOT block use of the artifact during the pilot; it ensures that any consumer downstream can distinguish stub from live attestation.
 
@@ -136,7 +140,7 @@ Invariants that determine whether a telemetry window is admissible for fitting.
 - INV-FIT12-2 (§5 operational-mode adherence)
 - INV-FIT12-6 (fan-mixing schedule is part of window definition)
 - INV-FIT45-1 (§6 prerequisite: valid Day2Posterior)
-- INV-FIT45-2 (§6 prerequisite: valid Day-3 operating-point map)
+- INV-FIT45-2 (§6 prerequisite: valid Day-4 operating-point map)
 - INV-FIT45-4 (§6 excitation protocol adherence within tolerance)
 
 ### Prior provenance and successive refinement

@@ -1,6 +1,6 @@
 # `aivu_greybox` v0.1 — Section 11: Common utilities
 
-**Status:** v1 draft, 2026-05-13. Anchored against §§1-10 (with §7 pending). §11 is the canonical reference for the numerical defaults pinned across §§4-6 and for the psychrometric utility surface those sections consume. Per the roadmap softening, the *derivations* of why each numerical default holds the value it holds are v0.2 work; v0.1 pins the values and references the originating section.
+**Status:** v1.1 (day-numbering reconciliation pass per Reconciliation Workstream Phase 1, 2026-05-16: §11.2 §6 sub-table header "Day-4-5" → "Days 5-6"; Phase A and Phase B "Day 4" window references → "Day 5"; Phase C and Phase D "Day 5" window references → "Day 6"; Phase D residual rationale references to "end-of-Day-5 posterior" → "end-of-Day-6 posterior". Substantive numerical defaults unchanged. Prior v1 draft 2026-05-13, anchored against §§1-10 with §§4-6 closing notes as origin. Per the roadmap softening, the *derivations* of why each numerical default holds the value it holds are v0.2 work; v0.1 pins the values and references the originating section.
 
 ---
 
@@ -43,7 +43,7 @@ Every numerical default pinned in §§4-6 closing notes, with origin section, sc
 | Mode-agreement failure threshold | 5% of prior σ | If the four prior-perturbed Laplace restarts return modes that disagree by more than 5% of the prior σ on any parameter, convergence is flagged as failed per INV-FIT12-4 and no `Day2Posterior` is signed. | v0.1 settled. |
 | Prior-perturbed restarts | 4 | Number of independent L-BFGS-B starts from prior-perturbed initial values, used for the Laplace mode-agreement check. | v0.1 settled. Four is the minimum that detects multi-modal posteriors at acceptable wall-clock cost; tighter coverage is v0.2 NUTS/HMC work per §5.6. |
 
-### §6 — Day-4-5 active-perturbation batch fit
+### §6 — Days 5-6 active-perturbation batch fit
 
 | Symbol | Value | Scope | Derivation status |
 | --- | --- | --- | --- |

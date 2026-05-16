@@ -1,12 +1,12 @@
 # `aivu_greybox` v0.1 — Section 7: Recursive-mode Phase 2 solver and First Law residual
 
-**Status:** v1 draft, 2026-05-13. Anchored against §§1-6 and §§8-12 (with §7 the last v0.1 section to land). §7 specifies the heartbeat-cadence recursive solver that operates after the 5-Day commissioning window closes, and the First Law residual self-test that runs alongside it. Per A4: §7 spec is pilot-blocking; §7 code is pilot-blocking only if the homeowner agrees to ongoing measurement at home closing. §7 spec is settled regardless of that decision.
+**Status:** v1.2 (day-numbering reconciliation pass per Reconciliation Workstream Phase 1, 2026-05-16: Days-4-5 references updated to Days-5-6; §6 Day-5 posterior references updated to §6 Day-6 posterior; `Day5Posterior` → `Day6Posterior`; Day-3 (Capacity, EER) map references updated to Day-4; 5-Day commissioning window references updated to 7-Day; INV-REC7-* names unaffected. Substantive content unchanged). Prior v1 draft 2026-05-13. Anchored against §§1-6 and §§8-12 (with §7 the last v0.1 section to land). §7 specifies the heartbeat-cadence recursive solver that operates after the 7-Day commissioning window closes, and the First Law residual self-test that runs alongside it. Per A4: §7 spec is pilot-blocking; §7 code is pilot-blocking only if the homeowner agrees to ongoing measurement at home closing. §7 spec is settled regardless of that decision.
 
 ---
 
 ## 7.1 Position of §7 in the greybox pipeline
 
-§§4-6 are batch-mode fits over fixed telemetry windows: Fan-Heat (§4) over the Day-1 fan-only window, passive batch (§5) over the Day-1-2 48-hour window, active-perturbation batch (§6) over the Days-4-5 48-hour window. Each emits a single posterior, signs it, and exits. The 5-Day commissioning window closes with the §6 Day-5 envelope-half-final signing.
+§§4-6 are batch-mode fits over fixed telemetry windows: Fan-Heat (§4) over the Day-1 fan-only window, passive batch (§5) over the Day-1-2 48-hour window, active-perturbation batch (§6) over the Days-5-6 48-hour window. Each emits a single posterior, signs it, and exits. The 7-Day commissioning window closes with the §6 Day-6 envelope-half-final signing.
 
 §7 is what runs afterward. From the moment the homeowner moves in until the HPM is decommissioned years later, §7 operates continuously: consumes 1 Hz telemetry at heartbeat cadence, maintains a recursive posterior over the six canonical parameters, tracks parameter drift, runs the First Law residual self-test against ground truth, and signs the resulting records into the same log §§4-6 wrote into during commissioning.
 
@@ -31,11 +31,11 @@ The state is **not** the home's thermal state (T_main, T_attic, W_main, etc.). T
 
 ### 7.2.2 Initialization
 
-At commissioning-window close, §7 initializes from the §6 Day-5 posterior:
+At commissioning-window close, §7 initializes from the §6 Day-6 posterior:
 
-> (μ_0, Σ_0) = (μ_Day5, Σ_Day5)
+> (μ_0, Σ_0) = (μ_Day6, Σ_Day6)
 
-with the per-parameter identifiability flags from §6 propagated forward as initial-condition metadata. A parameter flagged at end-of-Day-5 as `degraded` or as carrying an identifiability collapse enters §7 with the same flag; §7 does not re-baseline.
+with the per-parameter identifiability flags from §6 propagated forward as initial-condition metadata. A parameter flagged at end-of-Day-6 as `degraded` or as carrying an identifiability collapse enters §7 with the same flag; §7 does not re-baseline.
 
 If §6 did not run (the commissioning window was aborted or §6 emitted no signed posterior), §7 does not initialize. The home remains in "commissioning incomplete" state until a valid §6 posterior exists.
 
@@ -45,7 +45,7 @@ At each heartbeat, §7 receives a 1-second telemetry window (one sample per chan
 
 1. **Predict.** Propagate the current parameter posterior (μ_{t-1}, Σ_{t-1}) through a process model that allows parameters to drift slowly. The process model is `μ_pred = μ_{t-1}`, `Σ_pred = Σ_{t-1} + Q·Δt`, where `Q` is the process noise covariance — a small diagonal matrix expressing the prior belief that parameters drift on weeks-to-months timescales, not seconds-to-minutes. Per-parameter `Q` diagonal values are pinned in §11 with v0.2 derivation status.
 
-2. **Reconstruct thermal state.** From the 1-second telemetry window, compute the current observable thermal state: T_main from the return-plenum probe, T_attic from terminal probes during any fan-on period (fan-off heartbeats skip the attic-channel update), W_main from the return-plenum humidity, and HVAC operating state from the Eaton breaker and Day-3 (Capacity, EER) operating-point map.
+2. **Reconstruct thermal state.** From the 1-second telemetry window, compute the current observable thermal state: T_main from the return-plenum probe, T_attic from terminal probes during any fan-on period (fan-off heartbeats skip the attic-channel update), W_main from the return-plenum humidity, and HVAC operating state from the Eaton breaker and Day-4 (Capacity, EER) operating-point map.
 
 3. **Innovate.** Evaluate the forward chain (`aivu_physics` Phase 1 v4.0 + `aivu_dynamic` v0.2) at (μ_pred, observed thermal state, observed HVAC state) for the previous heartbeat, producing a prediction of what the thermal state should be at this heartbeat. The innovation is the difference between predicted and observed thermal state.
 
@@ -70,9 +70,9 @@ Phoenix-July post-commissioning operation has the HVAC cycling — fan-on and fa
 
 ### 7.3.1 Prior provenance
 
-§7's prior at heartbeat t is the posterior at heartbeat t-1, which traces back through the recursive chain to the §6 Day-5 posterior, which traces back to §5 Day-2 (the §6 prior), which traces back to §5.4's prior path. The full prior-provenance chain is preserved per INV-FIT12-3 and INV-FIT45-5, propagated through §7 as a per-heartbeat reference in the signed record's metadata.
+§7's prior at heartbeat t is the posterior at heartbeat t-1, which traces back through the recursive chain to the §6 Day-6 posterior, which traces back to §5 Day-2 (the §6 prior), which traces back to §5.4's prior path. The full prior-provenance chain is preserved per INV-FIT12-3 and INV-FIT45-5, propagated through §7 as a per-heartbeat reference in the signed record's metadata.
 
-For storage efficiency, §7 records reference the most recent commissioning-signing record (§6 Day-5) by content-addressed hash rather than reproducing the full chain. An external verifier reconstructs the chain by walking back through the log.
+For storage efficiency, §7 records reference the most recent commissioning-signing record (§6 Day-6) by content-addressed hash rather than reproducing the full chain. An external verifier reconstructs the chain by walking back through the log.
 
 ### 7.3.2 Signed-output cadence
 
@@ -82,7 +82,7 @@ Three signing cadences operate concurrently:
 
 - **Per-update-batch (configurable; default daily)**: at end of each calendar day, an aggregated posterior summary record is signed. The summary captures the day's posterior trajectory (start-of-day μ and Σ, end-of-day μ and Σ, intra-day excursions), the day's §8 identifiability report (run once per day at end-of-day rather than per-heartbeat), and the day's aggregate First Law residual statistics. Daily summaries are what downstream consumers (Clearinghouse, insurer, warrantor) typically read; per-heartbeat records exist for forensic re-derivation.
 
-- **Per-significance-event (event-driven)**: when a parameter's posterior crosses a configurable drift threshold (default: posterior mean has moved by more than 2σ from the §6 Day-5 value), a significance-event record is signed *and* invokes `threshold_attest` per §12 — analogous to the commissioning Birth Certificate signings, but for the post-commissioning event ("home's effective R-value has drifted significantly from commissioned baseline"). The drift-threshold value is pinned in §11 with v0.2 derivation status.
+- **Per-significance-event (event-driven)**: when a parameter's posterior crosses a configurable drift threshold (default: posterior mean has moved by more than 2σ from the §6 Day-6 value), a significance-event record is signed *and* invokes `threshold_attest` per §12 — analogous to the commissioning Birth Certificate signings, but for the post-commissioning event ("home's effective R-value has drifted significantly from commissioned baseline"). The drift-threshold value is pinned in §11 with v0.2 derivation status.
 
 ### 7.3.3 Threshold-attest moments in §7
 
@@ -96,10 +96,10 @@ In v0.1 with stub-attestation per §12 INV-SIGN12-4, significance-event records 
 
 §8 INV-ID8-1 requires all four diagnostics on every greybox posterior. §7 satisfies this with a tiered cadence:
 
-- **Diagnostic 1 (per-parameter prior-only ρ-test)**: evaluated at end-of-day on the daily-summary posterior. The relevant baseline is the §6 Day-5 σ values (the "prior" for the recursive chain), not the per-heartbeat σ that effectively drift downward as data accumulates. A parameter that flags `ρ > 0.95` against the §6 baseline indicates the recursive solver has lost identifiability on that parameter — a structural concern.
+- **Diagnostic 1 (per-parameter prior-only ρ-test)**: evaluated at end-of-day on the daily-summary posterior. The relevant baseline is the §6 Day-6 σ values (the "prior" for the recursive chain), not the per-heartbeat σ that effectively drift downward as data accumulates. A parameter that flags `ρ > 0.95` against the §6 baseline indicates the recursive solver has lost identifiability on that parameter — a structural concern.
 - **Diagnostic 2 (per-parameter posterior-tightness state)**: evaluated at end-of-day. The expected tightness baseline for recursive mode is not §5.5 / §6.4 (those are batch-mode tables). v0.1 conservatively uses the §6.4 table as the baseline; a parameter whose §7 daily-summary tightness exceeds 2× the §6.4 expected value emits `degraded` per §8.2. Pilot data will determine whether recursive mode warrants its own expected-tightness table per parameter in v0.2.
 - **Diagnostic 3 (Hessian eigenvalue spectrum)**: §7 doesn't compute a Hessian directly; the recursive Σ matrix is the analog. The condition number κ of Σ and the ridge-vector analysis run on Σ at end-of-day, with the same INV-ID8-3 thresholds.
-- **Diagnostic 4 (per-parameter posterior-prior KL divergence)**: evaluated at end-of-day against the §6 Day-5 prior — i.e., the cumulative information gained since commissioning. D_KL grows monotonically over time as the recursive solver consumes more data, which is informative on its own merit (slow growth in D_KL on a parameter = home behavior consistent with commissioning; sudden growth = potential drift or fault).
+- **Diagnostic 4 (per-parameter posterior-prior KL divergence)**: evaluated at end-of-day against the §6 Day-6 prior — i.e., the cumulative information gained since commissioning. D_KL grows monotonically over time as the recursive solver consumes more data, which is informative on its own merit (slow growth in D_KL on a parameter = home behavior consistent with commissioning; sudden growth = potential drift or fault).
 
 The cadence choice (daily, not per-heartbeat) is the architectural answer to the §8 cost-vs-utility tradeoff in recursive mode. Per-heartbeat §8 would consume budget that §3.2's 100 ms ceiling cannot accommodate; end-of-day §8 is sufficient for the diagnostic purpose (catching multi-hour-to-multi-day drift patterns, not heartbeat-level noise).
 
@@ -127,7 +127,7 @@ When the integration interval is chosen so that the home returns to near-baselin
 
 The terms on the left-hand side split into two categories:
 
-- **Directly measured**: Q_HVAC from the Day-3 calibrated (Capacity, EER) operating-point map evaluated at observed operating conditions; Q_solar from the weather station's pyranometer (where instrumented; otherwise from solar position and clear-sky model with cloud correction); Q_internal from occupancy detection plus typical-residential internal-gain tables.
+- **Directly measured**: Q_HVAC from the Day-4 calibrated (Capacity, EER) operating-point map evaluated at observed operating conditions; Q_solar from the weather station's pyranometer (where instrumented; otherwise from solar position and clear-sky model with cloud correction); Q_internal from occupancy detection plus typical-residential internal-gain tables.
 
 - **Computed via the forward chain at current μ_t**: Q_envelope, Q_infiltration, Q_distribution. These depend on the recursive solver's current parameter estimate.
 
@@ -150,8 +150,8 @@ A small ε_FL is necessary but not sufficient for model correctness — coincide
 
 1. **Sensor drift or fault.** SHT calibration drift over years, Venturi clogging, breaker-CT degradation. Detected by single-channel patterns (one channel's contribution to ε_FL grows while others remain stable).
 2. **Parameter drift outside the recursive solver's tracking ability.** Solar gain has changed (tree growth shading, replaced window, exterior shading installation); envelope has materially changed (failed insulation, undocumented renovation). The recursive solver may still produce internally-consistent parameter estimates while the underlying home no longer matches the commissioned baseline.
-3. **HVAC equipment degradation beyond what the Day-3 operating-point map captures.** Refrigerant loss, compressor wear, fan-motor decline. Detected by HVAC-related terms (Q_HVAC) contributing disproportionately to the residual.
-4. **Operating-mode departures from §6 commissioning conditions.** Phoenix-July post-commissioning behavior includes regimes §6's Days-4-5 active perturbation did not cover; the recursive solver may extrapolate from a regime that doesn't quite match.
+3. **HVAC equipment degradation beyond what the Day-4 operating-point map captures.** Refrigerant loss, compressor wear, fan-motor decline. Detected by HVAC-related terms (Q_HVAC) contributing disproportionately to the residual.
+4. **Operating-mode departures from §6 commissioning conditions.** Phoenix-July post-commissioning behavior includes regimes §6's Days-5-6 active perturbation did not cover; the recursive solver may extrapolate from a regime that doesn't quite match.
 5. **Model structural inadequacy.** The forward chain's assumptions about envelope dynamics, infiltration, or HVAC behavior may be wrong in ways that didn't surface during commissioning. This is the same misspecification risk the §10 closed-loop testing structurally cannot detect; First Law residual is one of the architectural defenses against it.
 
 The First Law residual record is signed regardless of which cause is operative; downstream consumers (warrantor, Clearinghouse, homeowner-facing service) consume the record and route diagnostic action accordingly. §7 does not adjudicate the cause; it surfaces the gap.
@@ -164,7 +164,7 @@ This is the architectural property that makes the First Law residual diagnostic 
 
 The recursive solver's job is to fit parameters such that the forward-chain prediction matches the observation. If the solver succeeds at that job perfectly, the prediction-observation residual on the *observation channels it uses* (T_main, T_attic, W_main) is small. This says nothing about whether the energy balance closes.
 
-The First Law residual runs the audit on a *different* quantity: total energy in over a closed interval vs. total energy stored. The solver cannot make this residual small by adjusting parameters, because the energy-in terms (Q_HVAC measured from the Day-3 calibration, Q_solar measured by pyranometer, Q_internal from occupancy detection) are observation quantities the solver doesn't fit — they are inputs to the forward chain, not outputs of it. The residual is therefore structurally insensitive to parameter optimization within the forward-chain model class.
+The First Law residual runs the audit on a *different* quantity: total energy in over a closed interval vs. total energy stored. The solver cannot make this residual small by adjusting parameters, because the energy-in terms (Q_HVAC measured from the Day-4 calibration, Q_solar measured by pyranometer, Q_internal from occupancy detection) are observation quantities the solver doesn't fit — they are inputs to the forward chain, not outputs of it. The residual is therefore structurally insensitive to parameter optimization within the forward-chain model class.
 
 What can collapse the First Law residual to zero is: the model class itself being correct. What the First Law residual cannot detect, by construction, is: errors in the directly-measured terms that happen to coincidentally cancel against errors in the computed terms over a given interval. Two structural defenses against that coincidence-cancellation case:
 
@@ -181,25 +181,25 @@ This is the architectural reason §7 is the only greybox section that emits both
 
 **`HeartbeatPosterior(t)`** — per-heartbeat (1 Hz). Compact: parameter mean μ_t, diagonal of Σ_t (full Σ_t recorded daily, not per-heartbeat, to bound storage), heartbeat timestamp, observation-channel availability flags, reference to most recent `DailyPosterior` for prior-provenance walk. Signed via `sign_record` + `commit_to_log`.
 
-**`DailyPosterior(date)`** — per calendar day. Comprehensive: start-of-day and end-of-day (μ, Σ), intra-day excursion summary, daily §8 identifiability report, daily First Law residual record (ε_FL, decomposition, threshold flag), references to all `HeartbeatPosterior` records contributing to this day (by content-addressed hash range), provenance walk to `Day5Posterior`. Signed.
+**`DailyPosterior(date)`** — per calendar day. Comprehensive: start-of-day and end-of-day (μ, Σ), intra-day excursion summary, daily §8 identifiability report, daily First Law residual record (ε_FL, decomposition, threshold flag), references to all `HeartbeatPosterior` records contributing to this day (by content-addressed hash range), provenance walk to `Day6Posterior`. Signed.
 
-**`SignificanceEvent(t)`** — event-driven. Emitted when a parameter's posterior crosses the configurable drift threshold (default 2σ from §6 Day-5 value). Comprehensive: the trigger condition (which parameter, by how much, against which baseline), pointer to the time-series of `DailyPosterior` records leading up to the event, summary of First Law residual behavior leading up to the event, identifiability flags. Signed *and* threshold-attested per §12.
+**`SignificanceEvent(t)`** — event-driven. Emitted when a parameter's posterior crosses the configurable drift threshold (default 2σ from §6 Day-6 value). Comprehensive: the trigger condition (which parameter, by how much, against which baseline), pointer to the time-series of `DailyPosterior` records leading up to the event, summary of First Law residual behavior leading up to the event, identifiability flags. Signed *and* threshold-attested per §12.
 
 ---
 
 ## 7.8 Invariants
 
-**INV-REC7-1 — §7 MUST NOT initialize without a valid §6 Day-5 posterior.** If commissioning did not produce a valid signed `Day5Posterior`, §7 does not start. The home remains in "commissioning incomplete" state until a valid §6 posterior exists. This is the architectural analog of INV-FIT12-1 / INV-FIT45-1 for the recursive mode.
+**INV-REC7-1 — §7 MUST NOT initialize without a valid §6 Day-6 posterior.** If commissioning did not produce a valid signed `Day6Posterior`, §7 does not start. The home remains in "commissioning incomplete" state until a valid §6 posterior exists. This is the architectural analog of INV-FIT12-1 / INV-FIT45-1 for the recursive mode.
 
 **INV-REC7-2 — Per-heartbeat update wall-clock MUST stay within §3.2's 100 ms ceiling.** Recursive update step plus per-heartbeat signing (per §12) plus heartbeat-cadence diagnostic computations together must complete within 100 ms. End-of-day computations (§8 invocation, First Law residual, daily summary signing) run asynchronously and are not subject to the heartbeat ceiling; they get a separate ≤ 60 second budget per evaluation.
 
-**INV-REC7-3 — Identifiability flags from §6 propagate into §7 initialization.** A parameter flagged at end-of-Day-5 enters §7 with the same flag set. §7 does not re-baseline a flagged parameter; the flag is preserved until §7's own §8 invocation either clears it (parameter becomes identifiable as recursive data accumulates) or escalates it (parameter that was flagged stays flagged or degrades).
+**INV-REC7-3 — Identifiability flags from §6 propagate into §7 initialization.** A parameter flagged at end-of-Day-6 enters §7 with the same flag set. §7 does not re-baseline a flagged parameter; the flag is preserved until §7's own §8 invocation either clears it (parameter becomes identifiable as recursive data accumulates) or escalates it (parameter that was flagged stays flagged or degrades).
 
 **INV-REC7-4 — First Law residual MUST be computed and signed at end-of-day, regardless of recursive-solver success.** A failed or non-converged recursive update does not exempt the day from First Law residual evaluation. If the recursive solver failed to update on a particular day, the day's `DailyPosterior` carries that failure flag, but the First Law residual is still computed against the previous day's μ_t and signed. The architectural reason: First Law residual is the conservation-law audit independent of the solver; suppressing it on solver failure would erase the one structurally-independent diagnostic.
 
 **INV-REC7-5 — Significance-event records MUST invoke `threshold_attest`, not `sign_record` alone.** Significance events are cohort-significance commitments analogous to commissioning Birth Certificate signings, and require the same attestation surface. Per-heartbeat and daily-summary records use `sign_record` only; significance events escalate. In v0.1 with stub-attestation per §12 INV-SIGN12-4, the significance-event record carries the stub flag; post-pilot swap-in activates live attestation without §7 code change per INV-SIGN12-5.
 
-**INV-REC7-6 — Recursive solver MUST NOT modify the §6 Day-5 posterior.** The §6 Day-5 record is the immutable commissioning baseline. §7 produces new records that *reference* the Day-5 baseline; it does not rewrite or supersede it. The recursive chain proceeds forward from Day-5; the commissioning record stays where it is.
+**INV-REC7-6 — Recursive solver MUST NOT modify the §6 Day-6 posterior.** The §6 Day-6 record is the immutable commissioning baseline. §7 produces new records that *reference* the Day-6 baseline; it does not rewrite or supersede it. The recursive chain proceeds forward from Day-6; the commissioning record stays where it is.
 
 **INV-REC7-7 — Stale-channel skipping is per-heartbeat, not session-level.** A fan-off heartbeat skips the attic channel for that heartbeat only; it does not disable the attic channel for subsequent fan-on heartbeats. The skip-logic operates on the current 1-second telemetry window's observable channels.
 

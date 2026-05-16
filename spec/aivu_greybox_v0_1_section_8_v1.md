@@ -1,6 +1,6 @@
 # `aivu_greybox` v0.1 — Section 8: Identifiability collapse detection and posterior tightness
 
-**Status:** v1 draft, 2026-05-13. Anchored against §§1-7 (with §§1-3 v0.1.1, §4 v3, §5 v3.3, §6 v3 closed; §7 pending). The six-parameter canonical set is `{R_eff, C_house, cfm50, F_slab, C_w, ceiling_coupling_factor}` per §§1-3 v0.1.1. Inherits: the Laplace posterior shape from §5.6 (mean = Hessian-mode, covariance = inverse Hessian at the mode); the per-parameter prior from §5.4; the expected per-parameter posterior-tightness tables from §5.5 (passive) and §6.4 (active-compounded). §8 produces signed metadata that travels with every greybox posterior — it does not produce a separate signed artifact.
+**Status:** v1.1 (day-numbering reconciliation pass per Reconciliation Workstream Phase 1, 2026-05-16: end-of-Day-5 references updated to end-of-Day-6 to reflect §6's window moving from Days 4-5 to Days 5-6; protocol-string identifier `§6_day5_active_compounded` → `§6_day6_active_compounded`; corrected §8.3 read-by line that incorrectly described the Day-2 and Day-5 records as "envelope and HVAC halves" — §8 reports co-travel with envelope records only, so the line now reads "envelope-half-initial and envelope-half-final." Prior v1 draft 2026-05-13). Anchored against §§1-7 (with §§1-3 v0.1.1, §4 v3, §5 v3.4, §6 v3.1 closed; §7 pending). The six-parameter canonical set is `{R_eff, C_house, cfm50, F_slab, C_w, ceiling_coupling_factor}` per §§1-3 v0.1.1. Inherits: the Laplace posterior shape from §5.6 (mean = Hessian-mode, covariance = inverse Hessian at the mode); the per-parameter prior from §5.4; the expected per-parameter posterior-tightness tables from §5.5 (passive) and §6.4 (active-compounded). §8 produces signed metadata that travels with every greybox posterior — it does not produce a separate signed artifact.
 
 ---
 
@@ -10,7 +10,7 @@
 
 §8 runs in two modes that share the same primitives:
 
-- **Batch mode** — invoked at end-of-Day-2 (after §5) and end-of-Day-5 (after §6). Operates on the just-computed posterior against the prior that fed the fit. This is the mode that produces the signed metadata on the §5 and §6 posteriors.
+- **Batch mode** — invoked at end-of-Day-2 (after §5) and end-of-Day-6 (after §6). Operates on the just-computed posterior against the prior that fed the fit. This is the mode that produces the signed metadata on the §5 and §6 posteriors.
 - **Recursive mode** — invoked at heartbeat cadence by §7 during Phase 2 ongoing-Cx. Operates on the current Kalman-class posterior against the previous posterior (treated as the recursive-mode prior). §7 specifies the cadence; §8 specifies the diagnostic logic, which is the same regardless of mode.
 
 §8 does not modify the posterior. It does not re-run the fit. It does not gate signing — the posterior is signed regardless of what §8 finds. What §8 controls is whether downstream consumers see a clean posterior or a posterior flagged on one or more parameters.
@@ -50,7 +50,7 @@ The expected tightness table from §5.5 (end-of-Day-2, passive forcing, Phoenix-
 | `C_w` | ≲ 25% |
 | `cfm50` | ≲ 30% |
 
-The §6.4 table for end-of-Day-5 (compounded passive + active) is tighter across the board:
+The §6.4 table for end-of-Day-6 (compounded passive + active) is tighter across the board:
 
 | Parameter | Expected `σ_post / μ_post` |
 | --- | --- |
@@ -108,7 +108,7 @@ The Laplace assumption matters here. If the v0.2 NUTS/HMC fallback (§5.6 commit
 
 ```
 identifiability_report:
-  protocol: "§5_day2_passive" | "§6_day5_active_compounded" | "§7_recursive_mode"
+  protocol: "§5_day2_passive" | "§6_day6_active_compounded" | "§7_recursive_mode"
   per_parameter:
     R_eff:
       rho:                       float            # Diagnostic 1
@@ -135,8 +135,8 @@ identifiability_report:
 The report is consumed by:
 
 - **§5 → §6**: §6 reads per-parameter identifiability flags from the end-of-Day-2 report and routes Phase A/B/C/D excitation accordingly (a parameter flagged at end-of-Day-2 is one §6 should aim to identify).
-- **§7 ongoing-Cx**: per-parameter flags propagate forward as the recursive-mode prior interface. A parameter flagged at end-of-Day-5 enters ongoing-Cx as a parameter the recursive solver should monitor for drift but should not over-weight.
-- **§12 signing chain**: the report is part of the signed Day-2 and Day-5 records that become the envelope and HVAC halves of the Digital Birth Certificate.
+- **§7 ongoing-Cx**: per-parameter flags propagate forward as the recursive-mode prior interface. A parameter flagged at end-of-Day-6 enters ongoing-Cx as a parameter the recursive solver should monitor for drift but should not over-weight.
+- **§12 signing chain**: the report is part of the signed Day-2 and Day-6 records that constitute the envelope-half-initial and envelope-half-final signings of the Digital Birth Certificate. (The HVAC half — the Day-4 record — is produced by `aivu_hvac_greybox`, not by §§5-6, and is outside §8's scope.)
 - **Clearinghouse**: per-home reports aggregate into a cohort-level distribution of identifiability outcomes. Homes that consistently flag the same parameter point to a protocol gap; homes that flag idiosyncratically point to site-specific noise.
 
 ---
@@ -191,4 +191,4 @@ The following are explicitly out of §8 v0.1:
 
 ---
 
-*End of §8 v1 draft. Configuration parameters pinned: ρ flag threshold 0.95; tightness breakpoints "within" / "loose" (≤2× expected) / "degraded" (>2× expected); Hessian condition-number threshold 10⁶; ridge-vector eigenvalue threshold 10⁻⁴ × λ_max. Six-parameter canonical set unchanged: `{R_eff, C_house, cfm50, F_slab, C_w, ceiling_coupling_factor}`. Diagnostic 4 (D_KL) emitted as a value, not gated against a threshold in v0.1. §9 (invariants consolidation) opens next.*
+*End of §8 v1.1. Configuration parameters pinned: ρ flag threshold 0.95; tightness breakpoints "within" / "loose" (≤2× expected) / "degraded" (>2× expected); Hessian condition-number threshold 10⁶; ridge-vector eigenvalue threshold 10⁻⁴ × λ_max. Six-parameter canonical set unchanged: `{R_eff, C_house, cfm50, F_slab, C_w, ceiling_coupling_factor}`. Diagnostic 4 (D_KL) emitted as a value, not gated against a threshold in v0.1. Day-numbering reconciled to 7-Day protocol per Reconciliation Workstream Phase 1, 2026-05-16. §9 (invariants consolidation) opens next.*

@@ -1,6 +1,6 @@
 # `aivu_greybox` v0.1 — Section 10: Test plan
 
-**Status:** v1.1 draft, 2026-05-13 (revision: §12 invariants registered in §10.5 coverage matrix upon §12 v1 closure same day). Anchored against §§1-12 (with §7 pending). §10 specifies the test plan that validates `aivu_greybox` v0.1 against its §9 invariants, its §3.2 performance ceilings, and its §3.3 cross-platform reproducibility commitment. The pilot-blocking subset is named explicitly; the remainder constitutes v0.2 work that does not gate the Phoenix pilot.
+**Status:** v1.2 (day-numbering reconciliation pass per Reconciliation Workstream Phase 1, 2026-05-16: §10.3 performance-ceiling and Configuration 2 references for the second batch fit updated from "Day-4-5" to "Days 5-6"; INV-FIT45-2 / INV-FIT45-5 / INV-SIGN12-3 citation rows in the §10.5 coverage matrix updated to match the new framing — Day-3 map → Day-4 map, `Day5Posterior` → `Day6Posterior`, Day-5 envelope-final → Day-6 envelope-final, Day-3 HVAC half → Day-4 HVAC half; 5-Day commissioning protocol → 7-Day commissioning protocol. Configuration 1 envelope-geometry scope broadened from V752-only to cover both floor-plan classes supported by `aivu_physics` Phase 1 v4.0 (V752-class and Nolan 8560-class), reflecting the possibility of two pilot homes per JDS 2026-05-16. Substantive test plan unchanged. Prior v1.1 draft 2026-05-13: §12 invariants registered in §10.5 coverage matrix upon §12 v1 closure same day). Anchored against §§1-12 (with §7 v1 drafted; §10.5 placeholder for §7 invariants remains pending a separate fold-in pass). §10 specifies the test plan that validates `aivu_greybox` v0.1 against its §9 invariants, its §3.2 performance ceilings, and its §3.3 cross-platform reproducibility commitment. The pilot-blocking subset is named explicitly; the remainder constitutes v0.2 work that does not gate the Phoenix pilot.
 
 ---
 
@@ -9,12 +9,12 @@
 §10 is the verification layer. Three distinct test classes operate on `aivu_greybox` v0.1:
 
 - **Closed-loop posterior recovery against `aivu_corpus` synthetic trajectories** (§10.2). Known parameters in via the forward chain, posterior out via greybox, recovery checked against the known parameters. This is the load-bearing functional test.
-- **Performance-ceiling verification** (§10.3). The three ceilings in §3.2 — Day-1-2 batch ≤ 24h wall-clock, Day-4-5 batch ≤ 24h wall-clock, Phase 2 per-cycle ≤ 100 ms — verified on representative HPM hardware.
+- **Performance-ceiling verification** (§10.3). The three ceilings in §3.2 — Day-1-2 batch ≤ 24h wall-clock, Days 5-6 batch ≤ 24h wall-clock, Phase 2 per-cycle ≤ 100 ms — verified on representative HPM hardware.
 - **Cross-platform numerical reproducibility** (§10.4). The §3.3 architectural commitment to bit-identical posteriors across macOS development and embedded Linux deployment, tested at two gates: the v0.1 architectural gate (bit-identity, per §3.3) and the relaxed pilot-test gate (10⁻⁵ relative, per roadmap B3 softening).
 
 Every invariant in §9 maps to at least one test in §10.2, §10.3, or §10.4. The mapping is enumerated in §10.5 as the invariant-coverage matrix.
 
-§10 does not specify field tests on the pilot home. Those are pilot operations (Workstream F in the roadmap), governed by the 5-Day commissioning protocol's operational document. §10's scope is the package, not its deployment.
+§10 does not specify field tests on the pilot home. Those are pilot operations (Workstream F in the roadmap), governed by the 7-Day commissioning protocol's operational document. §10's scope is the package, not its deployment.
 
 ---
 
@@ -44,9 +44,9 @@ A test configuration passes when **both** checks pass on all six parameters acro
 
 Three configurations are specified, mapping to the three batch-fit modes:
 
-**Configuration 1 — §5 Day-1-2 passive batch fit.** The pilot-blocking case. Excitation schedule: programmed 10 min/hr fan mixing, compressor off, heat strip off, OA dampers closed. Forward-chain conditions: Phoenix-July (climate file from `aivu_corpus`), V752 or V752-class envelope geometry, foam-attic configuration. Telemetry window: 48 hours. Expected posterior tightness per the §5.5 table (5% / 5% / 30% / 15% / 25% / 15% on `R_eff` / `C_house` / `cfm50` / `F_slab` / `C_w` / `ceiling_coupling_factor`).
+**Configuration 1 — §5 Day-1-2 passive batch fit.** The pilot-blocking case. Excitation schedule: programmed 10 min/hr fan mixing, compressor off, heat strip off, OA dampers closed. Forward-chain conditions: Phoenix-July (climate file from `aivu_corpus`); envelope geometry covers both floor-plan classes supported by `aivu_physics` Phase 1 v4.0 — V752-class and Nolan 8560-class — foam-attic configuration. The closed-loop test exercises both classes when both are represented in the pilot home pool. Telemetry window: 48 hours. Expected posterior tightness per the §5.5 table (5% / 5% / 30% / 15% / 25% / 15% on `R_eff` / `C_house` / `cfm50` / `F_slab` / `C_w` / `ceiling_coupling_factor`).
 
-**Configuration 2 — §6 Days-4-5 active-perturbation batch fit.** The pilot-blocking case for the second commissioning fit. Excitation schedule: the four-phase protocol from §6.2 (Phase A 18h continuous-fan continuous-compressor at full capacity; Phase B 6h decay; Phase C 18h reverse drive fan-only; Phase D 6h closing). Inherits §5 posterior as prior. Expected posterior tightness per the §6.4 table (1% / 1.5% / 8% / 5% / 8% / 4%).
+**Configuration 2 — §6 Days 5-6 active-perturbation batch fit.** The pilot-blocking case for the second commissioning fit. Excitation schedule: the four-phase protocol from §6.2 (Phase A 18h continuous-fan continuous-compressor at full capacity; Phase B 6h decay; Phase C 18h reverse drive fan-only; Phase D 6h closing). Inherits §5 posterior as prior. Expected posterior tightness per the §6.4 table (1% / 1.5% / 8% / 5% / 8% / 4%).
 
 **Configuration 3 — §7 recursive-mode Phase 2 solver.** Pending §7 spec; placeholder included for completeness. The recursive-mode test consumes a long telemetry trajectory (months, not days) and verifies that the per-cycle posterior update stays calibrated as parameters drift. Configuration 3 lands when §7 lands.
 
@@ -68,7 +68,7 @@ The B2 roadmap softening narrows the v0.1 closed-loop validation to the 17-row d
 §3.2 pins three wall-clock ceilings. Each is verified by a distinct test:
 
 - **Day-1-2 batch fit ≤ 24 hours.** Measured on representative HPM hardware (the SoC selected via D2, in progress with Device Solutions) running Configuration 1 telemetry. Expected actual time is well below 24 hours; the ceiling exists to constrain implementation choices.
-- **Day-4-5 batch fit ≤ 24 hours.** Same hardware, Configuration 2 telemetry, inheriting the Configuration 1 posterior as prior.
+- **Days 5-6 batch fit ≤ 24 hours.** Same hardware, Configuration 2 telemetry, inheriting the Configuration 1 posterior as prior.
 - **Phase 2 per-cycle update ≤ 100 ms.** Per-cycle recursive update on representative HPM hardware. Verified per §3.2's commitment that 100 ms gives 10× headroom against 1 Hz telemetry cadence and leaves room for `aivu_integrity`'s per-packet signing and MMR append. Verification lands when §7 lands (recursive-mode is §7's scope).
 
 ### 10.3.2 Pass criteria
@@ -154,10 +154,10 @@ Every invariant in §9.2 maps to at least one test class. The matrix below is th
 | INV-FIT12-7 (warmup observations preserved) | §5 | §10.2.3 (signed-record verification: `T_attic^obs(k)` series in `Day2Posterior` artifact) |
 | INV-FIT12-8 (two-channel likelihood structure) | §5 | §10.2.2 (recovery test: `ceiling_coupling_factor` recovery depends on two-channel evaluation per §5.5) |
 | INV-FIT45-1 (§6 prerequisite: `Day2Posterior`) | §6 | §10.2.3 (negative test) |
-| INV-FIT45-2 (§6 prerequisite: Day-3 map) | §6 | §10.2.3 (negative test) |
+| INV-FIT45-2 (§6 prerequisite: Day-4 map) | §6 | §10.2.3 (negative test) |
 | INV-FIT45-3 (HPM command authority via thermostat API pass-through) | §6 | §10.2.3 (negative test: simulated thermostat-only deployment, expect §6 refusal) |
 | INV-FIT45-4 (excitation protocol adherence within tolerance) | §6 | §10.2.3 (positive and negative tests: within-tolerance and outside-tolerance excitation) |
-| INV-FIT45-5 (prior-provenance chain preserved §5 → §6) | §6 | §10.2.3 (signed-record verification: §5 posterior hash in `Day5Posterior` record) |
+| INV-FIT45-5 (prior-provenance chain preserved §5 → §6) | §6 | §10.2.3 (signed-record verification: §5 posterior hash in `Day6Posterior` record) |
 | INV-FIT45-6 (convergence diagnostics gate signing) | §6 | §10.2.3 (negative test) |
 | INV-FIT45-7 (`η_distribution` held at Day-1 value) | §6 | §10.2.3 (positive test: confirm §6 does not modify `η_distribution`) |
 | INV-ID8-1 (all four diagnostics on every posterior) | §8 | §10.2.3 (signed-record verification: identifiability report present) |
@@ -170,7 +170,7 @@ Every invariant in §9.2 maps to at least one test class. The matrix below is th
 | INV-ID8-8 (Laplace vs. NUTS/HMC interface invariant) | §8 | v0.2 test, when NUTS/HMC fallback lands |
 | INV-SIGN12-1 (every record signed before emission) | §12 | §10.2.3 (signed-record verification: every emitted record carries a signature) |
 | INV-SIGN12-2 (sign-then-log paired sequence) | §12 | §10.2.3 (negative test: emit signed record without log append, expect rejection downstream) |
-| INV-SIGN12-3 (correct AttestationMoment per Birth Certificate half) | §12 | §10.2.3 (positive test: Day-2 carries `envelope_half_initial`; Day-5 carries `envelope_half_final`; Day-3 map carries `hvac_half`) |
+| INV-SIGN12-3 (correct AttestationMoment per Birth Certificate half) | §12 | §10.2.3 (positive test: Day-2 carries `envelope_half_initial`; Day-6 carries `envelope_half_final`; Day-4 map carries `hvac_half`) |
 | INV-SIGN12-4 (stub-attestation flag honesty) | §12 | §10.2.3 (positive test: v0.1 stub-attestation payload carries the post-pilot-replacement-required flag) |
 | INV-SIGN12-5 (signing interface invariance v0.1 → post-pilot) | §12 | v0.2+ test, when live threshold attestation lands; v0.1 verifies the contract is stable (function signatures unchanged) |
 | INV-SIGN12-6 (inclusion proofs retrievable post-hoc) | §12 | §10.2.3 (positive test: retrieve a record by content-addressed hash from a previously-written log; verify inclusion proof) |
@@ -187,7 +187,7 @@ The matrix is the artifact §9.4's update discipline cross-references. A new inv
 The following are explicitly out of §10 v0.1:
 
 - **Cohort-level analysis across pilot homes.** When N pilot homes have produced N posteriors, cross-home consistency analysis is a Clearinghouse concern, not a greybox test.
-- **Field tests on the pilot home itself.** Workstream F (operational protocol) and the 5-Day commissioning protocol document own the field-test methodology. §10 validates the package against synthetic trajectories before deployment; pilot data validates the deployment.
+- **Field tests on the pilot home itself.** Workstream F (operational protocol) and the 7-Day commissioning protocol document own the field-test methodology. §10 validates the package against synthetic trajectories before deployment; pilot data validates the deployment.
 - **Production monitoring.** Runtime alerting, drift detection in the field, and the Clearinghouse-level integrity audit are operational concerns, not §10 concerns.
 - **Performance regression tracking across greybox versions.** A continuous benchmark suite tracking how §3.2 performance evolves over greybox versions is a v0.2 concern; v0.1 verifies the ceilings once.
 - **Full 20-row corpus pass.** v0.1 narrows to the 17-row demonstration corpus plus the Phoenix-July foam-attic slice of the 20-row recipe per roadmap B2. Full 20-row pass is v0.2 work.

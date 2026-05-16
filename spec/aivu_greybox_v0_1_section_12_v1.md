@@ -1,6 +1,6 @@
 # `aivu_greybox` v0.1 — Section 12: Signing chain
 
-**Status:** v1 draft, 2026-05-13. Anchored against §§1-11 (with §7 pending). §12 specifies the integration surface between `aivu_greybox` and `aivu_integrity`: the three function signatures `aivu_greybox` calls and the invariants on what gets signed at each call. Per the Phoenix-pivot scope-narrowing, only **per-packet HPM signing** and **local append-only signed log** are pilot-floor; the **MMR commitment primitive** and **2-of-3 threshold attestation** surfaces are spec'd in v0.1 but their implementation lives in `aivu_integrity` post-pilot work. The §12 interface contract is invariant across that deferral.
+**Status:** v1.1 (day-numbering reconciliation pass per Reconciliation Workstream Phase 1, 2026-05-16: `SignableRecord` description updated to reference "Day-2 / Day-6 posterior records" (was Day-2 / Day-5); `BirthCertificateHalf` description and §6 call-site update to reference Day-4 (Capacity, EER) map (was Day-3) and `Day6Posterior` (was `Day5Posterior`); §6 sub-header "Day-4-5 active-perturbation batch fit" → "Days 5-6"; INV-SIGN12-1 records list updated to Day-6; INV-SIGN12-3 attestation moments list updated to "Day-4 HVAC half, Day-2 envelope-initial, Day-6 envelope-final"; closing summary notes the §6 day reconciliation. AttestationMoment enum value strings (`envelope_half_initial`, `hvac_half`, `envelope_half_final`) unchanged — they describe semantic moments, not days. Substantive interface contracts unchanged. Prior v1 draft 2026-05-13). Anchored against §§1-11 (with §7 v1 drafted). §12 specifies the integration surface between `aivu_greybox` and `aivu_integrity`: the three function signatures `aivu_greybox` calls and the invariants on what gets signed at each call. Per the Phoenix-pivot scope-narrowing, only **per-packet HPM signing** and **local append-only signed log** are pilot-floor; the **MMR commitment primitive** and **2-of-3 threshold attestation** surfaces are spec'd in v0.1 but their implementation lives in `aivu_integrity` post-pilot work. The §12 interface contract is invariant across that deferral.
 
 ---
 
@@ -32,7 +32,7 @@ sign_record(
 ) -> SignedRecord
 ```
 
-Per-packet signature of a single record using the HPM's Ed25519 key for the named role. `SignableRecord` is the union type covering every record `aivu_greybox` emits: telemetry packets, Fan-Heat records (Pass and Fail), Day-2 / Day-5 posterior records, §8 identifiability reports (co-signed with their parent posterior, not separately), and any structurally similar future record.
+Per-packet signature of a single record using the HPM's Ed25519 key for the named role. `SignableRecord` is the union type covering every record `aivu_greybox` emits: telemetry packets, Fan-Heat records (Pass and Fail), Day-2 / Day-6 posterior records, §8 identifiability reports (co-signed with their parent posterior, not separately), and any structurally similar future record.
 
 `KeyRole` distinguishes the HPM's per-packet telemetry key from any other key roles `aivu_integrity` exposes (e.g., a future Clearinghouse-facing transport key). For v0.1, the pilot home's HPM has one telemetry signing key role; the parameter is named explicitly so v0.2's multi-role expansion does not require a function signature change.
 
@@ -63,7 +63,7 @@ threshold_attest(
 ) -> ThresholdAttestation
 ```
 
-Invokes the 2-of-3 threshold attestation protocol for a Digital Birth Certificate half-signing moment. `BirthCertificateHalf` is one of: the Day-3 (Capacity, EER) signed map (HVAC half), the Day-2 posterior (envelope half, initial signing), or the Day-5 posterior (envelope half, final signing, superseding Day-2). `AttestationMoment` identifies which of the three signing moments is being attested.
+Invokes the 2-of-3 threshold attestation protocol for a Digital Birth Certificate half-signing moment. `BirthCertificateHalf` is one of: the Day-4 (Capacity, EER) signed map (HVAC half), the Day-2 posterior (envelope half, initial signing), or the Day-6 posterior (envelope half, final signing, superseding Day-2). `AttestationMoment` identifies which of the three signing moments is being attested.
 
 In v0.1, the implementation lives in `aivu_integrity` v0.1's spec but is *deferred* in execution per the Phoenix-pivot. The pilot ships with `threshold_attest` returning a stub-attestation: the artifact is signed with the HPM key only (rather than co-signed by HPM + BDT + Clearinghouse against a DKG-distributed threshold), and the returned `ThresholdAttestation` carries an explicit "stub-attestation, post-pilot replacement required" flag in its payload.
 
@@ -84,11 +84,11 @@ Every place `aivu_greybox` produces a record that must be signed.
 
 - **`Day2Posterior` record (including the co-signed §8 identifiability report per INV-ID8-1):** `sign_record` → `commit_to_log` → `threshold_attest(artifact, "envelope_half_initial")`. Three calls in sequence. The threshold attestation is the Digital Birth Certificate envelope-half-initial signing moment per §2.3.
 
-### §6 — Day-4-5 active-perturbation batch fit
+### §6 — Days 5-6 active-perturbation batch fit
 
-- **`Day5Posterior` record (including co-signed §8 identifiability report):** `sign_record` → `commit_to_log` → `threshold_attest(artifact, "envelope_half_final")`. Same three-call pattern, different attestation moment. Day-5 supersedes Day-2 as the home's commissioned envelope baseline per §2.3 and §6's closing note.
+- **`Day6Posterior` record (including co-signed §8 identifiability report):** `sign_record` → `commit_to_log` → `threshold_attest(artifact, "envelope_half_final")`. Same three-call pattern, different attestation moment. Day-6 supersedes Day-2 as the home's commissioned envelope baseline per §2.3 and §6's closing note.
 
-- **Day-3 (Capacity, EER) operating-point map (signed by Phase 2, consumed by §6):** §6 does not call `sign_record` on the Day-3 map; `aivu_physics` Phase 2 does that. But §6 verifies the Day-3 map's inclusion proof and threshold attestation before consuming it as `u_meas` per INV-FIT45-2. The verification path uses `aivu_integrity`'s read-side API, not §12's signing surface.
+- **Day-4 (Capacity, EER) operating-point map (signed by Phase 2 / `aivu_hvac_greybox`, consumed by §6):** §6 does not call `sign_record` on the Day-4 map; the HVAC-side commissioning package does that. But §6 verifies the Day-4 map's inclusion proof and threshold attestation before consuming it as `u_meas` per INV-FIT45-2. The verification path uses `aivu_integrity`'s read-side API, not §12's signing surface.
 
 ### §8 — Identifiability collapse detection
 
@@ -96,17 +96,17 @@ Every place `aivu_greybox` produces a record that must be signed.
 
 ### Continuous
 
-- **1 Hz telemetry packets:** `sign_record` → `commit_to_log`, every packet, throughout the 5-Day window and continuously thereafter in Phase 2 ongoing-Cx. The cadence is the HPM heartbeat per §3.2; the per-packet signing-plus-MMR-append budget is included in the 100 ms per-cycle ceiling.
+- **1 Hz telemetry packets:** `sign_record` → `commit_to_log`, every packet, throughout the 7-Day window and continuously thereafter in Phase 2 ongoing-Cx. The cadence is the HPM heartbeat per §3.2; the per-packet signing-plus-MMR-append budget is included in the 100 ms per-cycle ceiling.
 
 ---
 
 ## 12.4 Invariants
 
-**INV-SIGN12-1 — Every record `aivu_greybox` emits MUST be signed before it leaves the package boundary.** No record is emitted unsigned. The records covered are: telemetry packets (continuous), Fan-Heat Pass/Fail records (§4), Day-2 posterior records (§5), Day-5 posterior records (§6), and the §8 identifiability reports co-signed with their parent posterior. Implementations that emit any of these records without invoking `sign_record` are non-compliant.
+**INV-SIGN12-1 — Every record `aivu_greybox` emits MUST be signed before it leaves the package boundary.** No record is emitted unsigned. The records covered are: telemetry packets (continuous), Fan-Heat Pass/Fail records (§4), Day-2 posterior records (§5), Day-6 posterior records (§6), and the §8 identifiability reports co-signed with their parent posterior. Implementations that emit any of these records without invoking `sign_record` are non-compliant.
 
 **INV-SIGN12-2 — Every signed record MUST be appended to the local signed log before being consumed by a downstream call site.** `sign_record` and `commit_to_log` are paired; signing without appending leaves the record unverifiable to any later consumer. The sequence is `sign_record` → `commit_to_log`, not reversed and not separated.
 
-**INV-SIGN12-3 — Birth Certificate half-signing moments MUST invoke `threshold_attest` with the correct `AttestationMoment` identifier.** Three moments exist: Day-3 HVAC half, Day-2 envelope-initial, Day-5 envelope-final. Each is identified by its enum value; the value is part of the threshold-attestation payload. Wrong-moment attestation (signing the Day-2 posterior with the `envelope_half_final` moment label) is non-compliant.
+**INV-SIGN12-3 — Birth Certificate half-signing moments MUST invoke `threshold_attest` with the correct `AttestationMoment` identifier.** Three moments exist: Day-4 HVAC half, Day-2 envelope-initial, Day-6 envelope-final. Each is identified by its enum value; the value is part of the threshold-attestation payload. Wrong-moment attestation (signing the Day-2 posterior with the `envelope_half_final` moment label) is non-compliant.
 
 **INV-SIGN12-4 — The stub-attestation flag MUST be honest.** v0.1 pilot ships with `threshold_attest` returning stub-attestation. The returned `ThresholdAttestation` payload MUST carry the "stub-attestation, post-pilot replacement required" flag visible to any consumer parsing the record. A v0.1 implementation that emits a stub-attestation without the flag is non-compliant. The flag does NOT block use of the artifact during the pilot; it ensures that any consumer downstream can distinguish stub from live attestation.
 
