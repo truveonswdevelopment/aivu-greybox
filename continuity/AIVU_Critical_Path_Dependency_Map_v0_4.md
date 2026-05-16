@@ -1,14 +1,82 @@
 # AIVU Critical-Path Dependency Map
 
-**Version:** 0.3 — drafted 2026-05-16, reconciling state after the 2026-05-15 session's six commits (§11.2 amendment lock, Pass A, Pass B, amendment promoted to Authoritative, G7, G8) and the 2026-05-16 session's Phase 1 day-numbering reconciliation commit. v0.2 of 2026-05-14 was not updated at session close on 2026-05-15 — a real bookkeeping miss that produced an hour of wasted reasoning at the start of 2026-05-16 before being caught and corrected. v0.3 retires that staleness.
+**Version:** 0.4 — drafted 2026-05-16 (afternoon), reconciling state after the 2026-05-16 48h closed-loop diagnostic dive on the §5 fit. v0.4 surfaces two architectural insights that emerged from reading the diagnostic output, both with consequences that reshape the project's measurement architecture and ripple through §5, §6, §11.x, §12, and the MRAC framing. v0.3 of this morning is correct on the procedural-fix story; v0.4 supersedes it on the measurement-architecture story.
 
-**Purpose:** Honest dependency graph of every artifact needed to deliver dual-track commissioning at one Phoenix pilot home. Single source of truth for "what's done, what isn't, what depends on what."
+**Purpose:** Honest dependency graph of every artifact needed to deliver the AIVU measurement architecture at production-defensible quality at one Phoenix pilot home. Single source of truth for "what's done, what isn't, what depends on what."
 
-**Discipline this enforces:** No artifact gets called "done" until its honest state, its dependencies, and its retirement-of-stubs are named here. **Discipline added in v0.3:** this document must be updated whenever a commit changes the state of any artifact named below. Update happens in the same session as the commit, not later.
+**Discipline this enforces:** No artifact gets called "done" until its honest state, its dependencies, and its retirement-of-stubs are named here. This document must be updated whenever a commit changes the state of any artifact named below. Update happens in the same session as the commit, not later.
 
 ---
 
-## What changed from v0.2 (the 2026-05-14 draft)
+## What changed from v0.3 (drafted 2026-05-16 morning)
+
+The 2026-05-16 afternoon 48h diagnostic dive on the §5 passive fit produced an unexpected finding. Working through that finding with JDS generated two architectural insights that change the project structurally.
+
+### The diagnostic finding (the data)
+
+A diagnostic script (`tests/g8a_diagnostic.py`, not committed) re-ran the 48h fit and dumped the full Laplace structure that the test methods had ignored:
+
+- Hessian condition number: **2.9 × 10^14**. Eight orders of magnitude beyond "severely degenerate" by any standard threshold.
+- Four ridge vectors flagged by the §8 identifiability machinery, each one a **single-parameter eigenvector** with loading 1.0 on one parameter and zero on the others: C_house (eigenvalue 1.6 × 10^-8), C_wind (eigenvalue 6.2), C_stack (eigenvalue 25), C_w (eigenvalue 86).
+- The four restarts converged tightly on R_opaque (0.00 σ_prior disagreement) but disagreed on C_stack (0.93 σ_prior), C_wind (0.65 σ_prior), and ceiling_coupling_factor (0.57 σ_prior). Production-default `mode_agreement_fraction = 0.05` would have rejected this fit.
+- Per-parameter posterior-from-θ_true distances in posterior-σ units: C_w at 272 σ_posterior away from truth; C_house at 49 σ; R_opaque at 8.2 σ; U_fenestration at 6.5 σ; ceiling_coupling_factor at 5.9 σ. The reported posterior σ values for these parameters are Laplace-approximation artifacts of inverting an ill-conditioned Hessian, not genuine information.
+
+The §11.2 amendment's seven-parameter set was correct in *what* AIVU wants to characterize. It did not specify the procedural separation by which §5 actually identifies them. v0.4 surfaces that the joint-fit framing under uniform residual weighting cannot identify the seven parameters from 48h of passive telemetry, no matter how long the window is extended.
+
+The 4-of-7 result at 12h that v0.3 celebrated as "first measurement signal achieved" was Laplace-approximation artifact on parameters the §5 protocol does not constrain. v0.4 retires that framing honestly.
+
+### Architectural insight 1 — Sequential identification by frequency band, within Cx
+
+The seven parameters have characteristic frequency-content signatures. R_opaque, U_fenestration are roughly frequency-flat conductances identifiable at low frequencies (DC + diurnal). ceiling_coupling_factor is observable at the diurnal harmonic where sol-air drives the attic. C_house's thermal-mass time constant produces phase lag at the diurnal frequency. C_stack and C_wind respond to wind variability (synoptic, hours-to-day) and stack-effect ΔT. C_w lives at higher frequencies than C_house. The current joint fit weights all 1-Hz samples uniformly, allowing quasi-steady-state data to drown out the transients that actually constrain weakly-identified parameters.
+
+The structural fix is sequential identification stage by stage, each stage targeting parameters whose signatures live in distinct frequency bands or physically homogeneous regimes:
+
+- **§5 Stage 1 (diurnal-thermal band, night-weighted residuals):** R_opaque, U_fenestration, ceiling_coupling_factor. Conductive parameters identified when solar is off so attic-main coupling is purely conductive.
+- **§5 Stage 2 (synoptic-wind band):** C_stack, C_wind. Identified against wind-variability residuals after Stage 1 parameters are pinned. The "wind doesn't follow a diurnal cycle" insight applies here — wind effects can be separated structurally rather than confounded with thermal effects.
+- **§6 Stage 3 (active thermal night transients):** C_house. Driven by HVAC compressor-on cooling at night to produce large ΔT excursions; Phase B decay is a near-pure thermal-time-constant identification with solar absent and Stage 1 conductances pinned.
+- **§6 Stage 4 (active moisture night transients):** C_w. Compressor-on dehumidification at night drives moisture out at known rate; W_main response reveals C_w with all thermal parameters pinned.
+
+Posterior propagates between stages as informative prior (per the §11.2 posterior-as-prior chain discipline). Each parameter is identified in its cleanest regime.
+
+§6's targeted role gets sharper: §6 is not "more excitation generically" but **targeted excitation against specific parameters (C_house, C_w) that §5 cannot reach, in physically homogeneous regimes (night, with §5 parameters pinned).**
+
+### Architectural insight 2 — Temporal identification across Cx and continuous operation
+
+A 7-day commissioning window has fixed information content per parameter, regardless of cleverness in the fit. Some parameters (R_opaque, U_fenestration) reach production tightness inside the window. Others (C_house, C_w even with §6 active perturbation) may reach preliminary tightness only; their production-grade values come from operational telemetry that accumulates over months and years. The HPM, running continuously after Cx, has the unique capability to **opportunistically capture regime-clean windows of the same regime classifications the Cx fit used**, accumulating posterior refinement on parameters that 7 days alone cannot pin.
+
+Concretely: a parameter whose §5 Stage 2 fit produces a 25% posterior tightness at end-of-Cx because Phoenix-July weather only had three clean wind events of the right magnitude during the 7 days will, after 6 months of operational telemetry tagged for the same regime, have hundreds of clean events to average. The posterior tightens by √N — at 100 events, the noise-limited uncertainty drops by an order of magnitude. The same physics-based regime decomposition machinery runs on both timescales; the difference is the accumulation horizon.
+
+Consequences ripple through the architecture:
+
+- **Per-parameter epistemic horizons.** Each parameter in the seven-parameter set has a *primary identification horizon* (Cx for R_opaque, U_fenestration; Cx + 6mo operational for C_house, C_w; Cx + 12mo for some secondaries). The §11.x amendment that follows §11.2 specifies these per-parameter horizons. The §5.5 expected-tightness table becomes multi-column, indexed by parameter and horizon.
+
+- **Signed-record schema evolves.** §12's signed-record format gains per-parameter epistemic status with vintage and confidence horizon. A Digital Birth Certificate carries not just (mean, covariance) per parameter but also (horizon, vintage, confidence-state). A consumer of the record understands which parameters are pinned-at-Cx vs. refining-over-time. This is the §12.x amendment.
+
+- **HPM gains opportunistic-measurement role.** Today's MRAC framing has the HPM running the continuous-adaptation real-time control loop. v0.4 adds: the HPM also tags regime-clean observation windows, accumulates per-regime statistics, and feeds them to the BDT periodically for posterior refinement. Same MRAC principle, second time horizon. The MRAC doc gets an addendum capturing this dimension.
+
+- **Clearinghouse data products differentiate by record vintage.** A 5-year-old AIVU-instrumented home has tighter posteriors than a 7-day-old one. Insurance underwriting that consumes the records understands the difference. (Out of scope for greybox; flagged for the OS doc and System Architecture.)
+
+- **Asymmetry with HERS deepens further.** HERS is structurally a snapshot. AIVU is structurally cumulative. Not a feature comparison; a category difference.
+
+### Work this surfaces as new top-of-stack
+
+A new architectural document, **AIVU Temporal Identification Architecture**, lands BEFORE §5.3 and §6.3 spec amendments because it determines what those amendments are amending. Its scope:
+
+1. The regime classification (diurnal-thermal night, synoptic-wind, active-thermal-transient, active-moisture-transient).
+2. The per-parameter temporal profile (primary horizon, secondary refinement horizon).
+3. The data-flow architecture (HPM tags windows by regime, accumulates per-regime statistics, feeds BDT for posterior updates).
+4. The signed-record schema implications (per-parameter epistemic status with vintage).
+5. The §11.x and §12.x amendments this enables.
+
+Multi-session work, starts with v0.1 skeleton tomorrow.
+
+---
+
+## Prior context — what changed in v0.3 (2026-05-16 morning)
+
+v0.3 retired the staleness in v0.2 that had become invisible during the 2026-05-15 working day (G7, G8, §11.2 amendment all landed without v0.2 being updated). The session-start verification protocol that would have caught the staleness landed as part of the procedural-fix commit.
+
+The headline from v0.3 stands as historical fact but its framing retires under v0.4's insight 2 below:
 
 The headline: G7 shipped, G8 shipped with a named gap, the §11.2 amendment is now Authoritative with seven canonical parameters, and Phase 1 of the day-numbering reconciliation workstream landed today's commit.
 
@@ -151,27 +219,31 @@ Both records authenticate dual-track physics characterization, with §8 identifi
 - Dependencies: signing stub (Bridging: `STUB`; retires at G9)
 
 ### G2. `aivu_greybox` §5 (Days 1-2 passive Laplace fit)
-- State: `SHIPPED_WITH_GAPS` (2026-05-13; seven-parameter set landed 2026-05-15 Pass A/B)
+- State: `SPEC_AMENDMENT_REQUIRED` (per v0.4 architectural insights, 2026-05-16 afternoon)
 - Location: `~/aivu-greybox/code/aivu_greybox/src/aivu_greybox/passive_fit.py`
-- Tests: 13 passing against `StubForwardChain` (count from v0.2; total greybox count is now 79 post-G7/G8)
-- Canonical parameter set: `{R_opaque, U_fenestration, C_house, C_stack, C_wind, C_w, ceiling_coupling_factor}` per §11.2 amendment Authoritative 2026-05-15
+- Tests: 13 + 2 (G8) passing against `StubForwardChain` and `RealForwardChain`; the 2 G8 tests are now understood as baseline-against-which-new-version-is-validated, NOT as evidence of measurement signal
+- Canonical parameter set: `{R_opaque, U_fenestration, C_house, C_stack, C_wind, C_w, ceiling_coupling_factor}` per §11.2 amendment Authoritative 2026-05-15 (unchanged)
+- **What's wrong:** the current single-pass joint fit cannot identify the seven parameters from §5 passive telemetry, regardless of window length. The 2026-05-16 48h diagnostic showed condition number 2.9 × 10^14 and four single-parameter ridge vectors. The fix is structural — sequential identification by frequency band per the v0.4 sequential-identification insight, not a tuning adjustment.
 - Dependencies:
-  - Forward chain: Bridging `STUB` via `StubForwardChain` for the test suite; `REAL` via G7 for G8 closed-loop test
-  - Signing chain (Bridging: `STUB`; retires at G9)
-- Retirement gate: closed-loop test passes at production thresholds for all seven parameters. G8 has produced a partial pass (4 of 7 parameters under 12h passive); remaining work tracked as the ridge-resolution workstream below.
+  - **AIVU Temporal Identification Architecture document** (new top-of-stack, see Track 4 below). Specifies the regime classification and stage structure that §5.3 amendment will implement.
+  - §5.3 spec amendment (frequency-domain likelihood, stage-by-stage identification per §5 Stage 1 and §5 Stage 2 of the v0.4 four-stage map).
+  - Code rewrite of `passive_fit.py` to implement the staged structure with posterior-as-prior propagation between stages.
+- Retirement gate: §5.3 amendment locks; staged-fit code passes closed-loop test against `aivu_corpus` synthetic trajectories at production-default `mode_agreement_fraction = 0.05` AND §8 `joint_identifiability_flag = False`.
 
 ### G3. `aivu_greybox` §6 (Days 5-6 active perturbation Laplace fit)
-- State: `SHIPPED_WITH_GAPS` (2026-05-13; seven-parameter set landed 2026-05-15 Pass A/B; spec reconciled to Days 5-6 framing 2026-05-16)
+- State: `SPEC_AMENDMENT_REQUIRED` (per v0.4 architectural insights)
 - Location: `~/aivu-greybox/code/aivu_greybox/src/aivu_greybox/active_fit.py`
-- Tests: 13 passing against `StubForwardChain` (count from v0.2)
+- Tests: 13 passing (count from v0.2; now understood as baseline-against-which-staged-implementation-is-validated)
 - Canonical parameter set: seven parameters per §11.2 amendment
+- **Targeted role per v0.4:** §6 is no longer "more excitation generically." §6 targets C_house (Stage 3) and C_w (Stage 4) — parameters §5 structurally cannot identify — using HVAC-driven excursions in physically homogeneous regimes (night-only, with §5 parameters pinned via informative priors from §5 posterior). Day-vs-night separation suppresses solar confounding. Phase B's compressor-off decay at night is near-pure thermal-time-constant identification for C_house. Phase D's compressor-on dehumidification at night identifies C_w.
 - Dependencies:
-  - Forward chain INCLUDING Phase 2 Layers 2 and 3 (Bridging: `STUB` via `StubForwardChain`; partially retires when G7 + F5 + F6 ship — G7 done, F5/F6 pending)
-  - Day-4 signed HVAC record from H2 (Bridging: currently absent; retires when `aivu_hvac_greybox` ships)
-  - Signing chain (Bridging: `STUB`; retires at G9)
-- Retirement gate: Phase 2 Layers 2-3 ship AND `aivu_hvac_greybox` Day-4 record available AND closed-loop test passes at production thresholds with full 7-of-7 per-parameter coverage
-- Pending code-side day-numbering work: `Day5Posterior` → `Day6Posterior` dataclass rename in `records.py`; `day3_map_record_hash` → `day4_map_record_hash` field rename in `active_fit.py`. Tracked as Phases 2-3 of the Day-Numbering Reconciliation Workstream.
-- This is the artifact most exposed to upstream gaps. Until F5, F6, and H2 ship, §6 has never seen production-quality forward physics or a real HVAC record underneath it.
+  - **AIVU Temporal Identification Architecture document** (specifies Stage 3 and Stage 4 design)
+  - §6.3 spec amendment (the staged structure, day/night gating, posterior-from-§5 as prior)
+  - Phase 2 Layers 2 and 3 (F5, F6) — forward chain has to support active-phase HVAC operation for the §6 fit to run against real chain
+  - `aivu_hvac_greybox`'s Day-4 signed HVAC record
+  - Code rewrite of `active_fit.py` for staged structure
+- Retirement gate: §6.3 amendment locks; staged-fit code passes closed-loop test against `aivu_corpus` synthetic trajectories for C_house and C_w (the targets of §6) at production thresholds AND §8 joint check passes
+- Pending code-side day-numbering work: `Day5Posterior` → `Day6Posterior` dataclass rename in `records.py`; `day3_map_record_hash` → `day4_map_record_hash` field rename in `active_fit.py`. Tracked as Phases 2-3 of the Day-Numbering Reconciliation Workstream. Day-numbering and §6.3 amendment can land in either order; tightly coupled enough that doing them in one combined commit may be cleaner.
 
 ### G3a. Day-Numbering Reconciliation Workstream
 - State: **Phase 1 SHIPPED (2026-05-16, commit 3351b95); Phases 2-4 NOT_STARTED.**
@@ -211,24 +283,15 @@ Both records authenticate dual-track physics characterization, with §8 identifi
 - Known limitation: interim cfm50 translation in the `(C_stack, C_wind)` parameter path. The adapter converts the operational-infiltration coefficients into a derived-equivalent cfm50 at the §5 fit's mean operating conditions and feeds Phase 1 through its existing cfm50 path. Bias at high-ΔT or high-wind moments is named in the §11.2 amendment with a retirement gate. Retires when the Phase 1 operational-infiltration amendment ships (F9 below).
 - Critical-path role: **achieved.** This was the highest-leverage unfinished work as of v0.2; landing it on 2026-05-15 unblocked G8 and made the §5 leg measurable for the first time.
 
-### G8. §5 closed-loop test against the real chain — SHIPPED WITH NAMED GAP 2026-05-15
-- State: `SHIPPED_WITH_GAPS` (commit aff8f83, 2026-05-15)
-- Location: `~/aivu-greybox/code/aivu_greybox/tests/test_g8_closed_loop.py`
-- Tests: 2 passing
-- Result: 4 of 7 parameters recovered under 12h passive observation against `aivu_corpus` synthetic Phoenix-July trajectories. Recovered: `C_house`, `C_stack`, `C_wind`, `C_w`. Unrecovered: `R_opaque` and `ceiling_coupling_factor` traded off along an under-determined ridge; one parameter showed overconfident σ.
-- Critical-path role: **first measurement signal in the project.** Greybox machinery, written entirely without reference to the real forward chain, recovers a meaningful subset of envelope parameters when driven by real physics through G7 — with the failure mode being exactly what the §11.2 amendment predicted under 12h passive observation. Validates the architectural seam between greybox and Phase 1 + dynamic.
-- Gap: 3 of 7 parameters not recovered at 12h. See G8a below.
+### G8. §5 closed-loop test against the real chain — 12h v0.1 + 48h diagnostic, both retired in v0.4
+- State: `RETIRED` as a measurement signal; **baseline-against-which-staged-implementation-is-validated** going forward
+- 12h test (commit aff8f83, 2026-05-15): the 4-of-7 reading is Laplace-approximation artifact, not measurement signal. C_stack, C_wind, C_w, and C_house "covered" only because their reported posterior σ blew up wide enough to span θ_true by uncertainty. The fit was not constraining those parameters; it was reporting illusory width from inv(ill-conditioned Hessian).
+- 48h experiment (2026-05-16): condition number 2.9 × 10^14; joint identifiability flag fired; four single-parameter ridge vectors at near-zero eigenvalues; restart-to-restart disagreement of 0.93 σ_prior on C_stack against the production-default threshold of 0.05. Under production discipline this fit would have raised `LaplaceFitFailed`.
+- Test code remains in `tests/test_g8_closed_loop.py` and the diagnostic script in `tests/g8a_diagnostic.py` (uncommitted, lives only in JDS's local clone). When the §5.3 amendment lands and the staged-fit code is written, the closed-loop machinery will be re-targeted to validate per-stage recovery rather than seven-parameter joint recovery.
+- v0.3's "first measurement signal achieved" framing retires honestly. v0.4's framing: greybox machinery runs end-to-end against real Phase 1 physics (architectural seam validated), but the inverse-identification structure under joint fit cannot extract production-defensible posteriors. The staged structure is the fix.
 
-### G8a. Ridge resolution workstream — NEW ARTIFACT 2026-05-15
-- State: `NOT_STARTED`
-- Carrying party: Claude
-- Purpose: resolve the R_opaque × ceiling_coupling_factor identifiability ridge that left G8 with 4-of-7 recovery instead of 7-of-7.
-- Three angles, roughly in increasing cost:
-  - **(a) 48h passive observation window.** G8 ran at 12h; the §5 spec window is 48h. Longer passive observation gives the foam-coupling-factor's diurnal signal more cycles to discriminate against R_opaque's solar-coupled response. Cheap to try; runs in <1 session against the existing G8 machinery.
-  - **(b) §6 active perturbation.** Phase A's continuous-fan continuous-compressor drive introduces controlled main-space cooling that swings the attic-main differential through a wider range. The §6 spec predicts this resolves the ridge. Requires Phase 2 Layers 2-3 (F5, F6) shipped first.
-  - **(c) Reparametrization.** Replace R_opaque × ceiling_coupling_factor with a less-correlated pair (e.g., total ceiling-plane conductance + an attic-isolation ratio). Architectural change; only attempt if (a) and (b) don't crack the ridge.
-- Sequencing: (a) first as a cheap experiment. If (a) succeeds, the §11.2 amendment's expected-tightness table for `R_opaque` and `ceiling_coupling_factor` gets pinned by the result and v0.1 retirement is in reach. If (a) does not succeed, (b) becomes the path and waits on F5/F6.
-- Effort estimate: (a) <1 session; (b) gated on F5/F6; (c) variable.
+### G8a. Ridge resolution workstream — RETIRED in v0.4
+- v0.3 surfaced this as the next experiment under the assumption the ridge was R_opaque × ceiling_coupling_factor coupled-parameter degeneracy. The 48h diagnostic showed the ridges are four single-parameter near-zero eigenvalues, NOT a coupled-parameter ridge. v0.4 retires the ridge-resolution workstream; the structural fix is sequential identification (the new Temporal Identification Architecture workstream), not resolving a coupled ridge.
 
 ---
 
@@ -301,7 +364,7 @@ Real work, but NOT on the path to first pilot. Surfaced to prevent quiet capacit
 
 ## The critical path — five parallel tracks, one convergence
 
-**Track 1 — envelope §5 path, first measurement signal achieved:**
+**Track 1 — envelope §5 path, architectural reformulation required (v0.4):**
 
 ```
 F1, F2, F3 [SHIPPED]
@@ -311,27 +374,28 @@ G7  Real-chain adapter         [SHIPPED 2026-05-15, commit 814127e]
     │
     ▼
 G8  §5 real-chain test         [SHIPPED 2026-05-15, commit aff8f83]
-    │                              4 of 7 parameters recovered at 12h
+    │                              Joint-fit cannot identify 7 params from §5 passive
+    │                              under uniform-residual weighting at any window length.
+    │                              4-of-7 at 12h was Laplace-approx artifact.
     ▼
-G8a Ridge resolution           ← NEXT (R_opaque × ceiling_coupling_factor ridge)
-    │                              (a) 48h passive — cheap experiment, <1 session
-    │                              (b) §6 active perturbation — gated on F5/F6
-    │                              (c) reparametrization — last resort
+[NEW TOP-OF-STACK]
+T1  Temporal Identification Architecture document
+T2  §5.3 spec amendment (sequential identification by frequency band)
+T7  passive_fit.py rewrite for staged structure
+T8  F10 per-home pre-commissioning validation gate
+    │
     ▼
-Ready for §5 production-threshold retirement (7-of-7 coverage)
+Ready for §5 production-threshold retirement under staged structure
 ```
 
-**Track 1b — Phase 1 operational-infiltration amendment, parallel to Track 1's ridge work:**
+**Track 1b — Phase 1 operational-infiltration amendment, demoted in v0.4:**
 
 ```
 F9  Phase 1 v4.0 → v4.1 (operational-infiltration entry point)
-    │                              Retires G7's interim cfm50 translation
+    │                              Demoted: not the dominant problem in v0.4.
+    │                              Cleanliness item, sits below T1-T8.
     ▼
 G7 adapter cleanup: derived-cfm50 path removed
-    │
-    ▼
-(C_stack, C_wind) flow directly to infiltration.py;
-posterior on those parameters becomes meaningful at every operating point
 ```
 
 **Track 2 — HVAC commissioning path (new, courtesy of this session):**
@@ -353,16 +417,16 @@ H3  HVAC closed-loop test against real Phase 2  (<1 session)
 Ready to produce Day-4 signed HVAC record
 ```
 
-**Track 3 — envelope §6 path (gated on Track 2 outputs):**
+**Track 3 — envelope §6 path, reframed in v0.4 as targeted excitation:**
 
 ```
-G7 [DONE] + F5, F6 + H2 (Day-4 record available) + G3a Phases 2-3 (records / active_fit code rename)
+T1 + T3 (§6.3 amendment) + F5, F6 + H2 (Day-4 record) + T7 (active_fit.py rewrite)
     │
     ▼
-G3  §6 real-chain test at production thresholds, 7-of-7 coverage
-    │
+G3  §6 real-chain test for Stages 3 and 4 (C_house, C_w) at production thresholds
+    │   §5 parameters pinned as informative priors; night-only HVAC excursions
     ▼
-Ready to produce Day-6 signed envelope record
+Ready to produce Day-6 signed envelope record (with epistemic status per parameter)
 ```
 
 **Track 4 — signing path, runs in parallel:**
@@ -406,7 +470,53 @@ Digital Birth Certificate complete, both halves saleable through Clearinghouse
 
 ---
 
-## Gates in execution order
+## New top-of-stack workstreams (v0.4 — Sequential and Temporal Identification)
+
+The architectural workstreams that the 2026-05-16 afternoon diagnostic surfaced. These sit ahead of all five tracks in priority because the existing tracks depend on them: until the identification structure is settled, no §5/§6 specs or code below them can be written productively.
+
+### T1. AIVU Temporal Identification Architecture document — TOP PRIORITY
+- State: `NOT_STARTED` (skeleton drafting begins 2026-05-17)
+- Location: `~/aivu-greybox/AIVU_Temporal_Identification_Architecture_v0_1.md` (repo root, peer with `AIVU_MRAC_Architecture_v0_1.md`)
+- Scope: regime classification (diurnal-thermal night, synoptic-wind, active-thermal-transient, active-moisture-transient); per-parameter primary identification horizon and secondary refinement horizon; data-flow architecture (HPM tags windows by regime, accumulates per-regime statistics, periodically feeds BDT for posterior refinement); signed-record schema implications; the §11.x and §12.x amendments this enables.
+- Why this is top-of-stack: §5.3 amendment, §6.3 amendment, §11.x amendment, §12.x amendment, F10 validation gate, and HPM scoping all depend on this document existing. It articulates what they are amending.
+- Effort estimate: multi-session at architectural level (no code). Skeleton in 1 session; first review-ready draft within 3-4 sessions.
+
+### T2. §5.3 spec amendment (sequential identification by frequency band)
+- State: `NOT_STARTED`; depends on T1
+- Scope: §5's likelihood structure shifts from uniform-residual-sum across 1-Hz samples to sequential stage-by-stage identification. Stage 1: R_opaque, U_fenestration, ceiling_coupling_factor against diurnal-thermal-band night-weighted residuals. Stage 2: C_stack, C_wind against synoptic-wind-band residuals with Stage 1 parameters pinned via posterior-as-prior. §5.5 expected-tightness table becomes per-stage rather than per-parameter.
+- Effort estimate: 1-2 sessions.
+
+### T3. §6.3 spec amendment (targeted-excitation staged identification)
+- State: `NOT_STARTED`; depends on T1 and T2
+- Scope: §6 targets C_house (Stage 3) and C_w (Stage 4) under night-only HVAC excursions with §5 parameters pinned. The four-phase protocol (A, B, C, D) maps to the staged structure with day/night gating. §6.4 expected-tightness reformulates per-stage.
+- Effort estimate: 1-2 sessions.
+
+### T4. §11.x amendment — per-parameter horizon assignment
+- State: `NOT_STARTED`; depends on T1
+- Scope: extends the §11.2 seven-parameter canonical set with per-parameter (primary identification horizon, secondary refinement horizon) metadata. The §5.5/§6.4 expected-tightness tables become multi-column indexed by horizon. Provisional priors update with horizon-aware framing.
+- Effort estimate: <1 session once T1 lands.
+
+### T5. §12.x amendment — signed-record schema with per-parameter epistemic status
+- State: `NOT_STARTED`; depends on T1
+- Scope: §12's signed-record format gains per-parameter epistemic status (mean, covariance, horizon, vintage, confidence-state). A consumer of the Digital Birth Certificate understands which parameters are pinned-at-Cx vs. refining-over-time. Schema evolution path specified so v0.1 records remain readable post-amendment.
+- Effort estimate: 1 session.
+
+### T6. MRAC doc addendum — temporal-identification dimension
+- State: `NOT_STARTED`; depends on T1
+- Scope: the MRAC doc gains a section explicitly capturing that the HPM's continuous-adaptation principle operates at two timescales — the real-time control loop (already in MRAC doc) AND the cumulative measurement loop (per Insight 2). One mechanism, two roles depending on parameter's epistemic status: drift-tracking for well-identified parameters; initial identification for weakly-identified parameters with multi-month/multi-year horizons.
+- Effort estimate: <1 session once T1 lands.
+
+### T7. Code rewrites in `passive_fit.py` and `active_fit.py`
+- State: `NOT_STARTED`; depends on T2 and T3
+- Scope: implement staged identification with posterior-as-prior propagation between stages. Existing single-pass code becomes baseline-against-which-staged-implementation-is-validated.
+- Effort estimate: 2-3 sessions across both modules.
+
+### T8. F10 pre-commissioning validation gate
+- State: `NOT_STARTED`; depends on T7
+- Scope: the per-home gate that 2026-05-16 afternoon's discussion surfaced. Before any real home gets a signed §5/§6 posterior, the pipeline runs the staged closed-loop test against `aivu_corpus` synthetic trajectories for that home's envelope class with production-strict thresholds (`mode_agreement_fraction = 0.05`, §8 `joint_identifiability_flag = False`). Halts and surfaces "this home's parameter regime is not in the validated envelope; engineering review required" on failure.
+- Effort estimate: <1 session once T7 lands; mostly wrapping existing test machinery in a decision gate.
+
+---
 
 **Completed since v0.2:**
 - ~~G7 — real-chain adapter ships.~~ DONE 2026-05-15 (commit 814127e).
@@ -437,28 +547,32 @@ Gates 1-3 can proceed in parallel — none blocks the others. Gates 5-7 (HVAC tr
 
 ## Critical-path summary in one sentence
 
-**G7+G8 achieved (first measurement signal landed) → ridge resolution at 48h + Phase 1 operational-infiltration amendment in parallel → Phase 2 v1 code + `aivu_hvac_greybox` spec/code/test → envelope §6 production-threshold test → `aivu_integrity` pilot-floor → `aivu_hpm` → hardware + pilot home → run 7-Day commissioning → both halves of Digital Birth Certificate signed.**
+**Architectural reformulation first (T1 Temporal Identification Architecture → T2/T3 §5.3/§6.3 amendments → T4/T5 §11.x/§12.x amendments → T6 MRAC addendum → T7 staged-fit code → T8 F10 validation gate); in parallel: Phase 2 v1 code + `aivu_hvac_greybox` spec/code; then convergence at envelope §6 staged-fit production-threshold test; then `aivu_integrity` pilot-floor + `aivu_hpm` + hardware + pilot home → run 7-Day Cx with per-parameter epistemic status records → continuous operational telemetry refines weakly-identified parameters over months/years → Clearinghouse data products differentiate by vintage.**
 
-What v0.2 framed as "earliest stuff works signal" has been achieved. The next milestone shape is not "can the machinery measure anything" but "can the machinery measure *enough* to cross the 7-of-7-parameter production threshold." The ridge-resolution workstream is the immediate next experiment.
+What v0.3 framed as "first measurement signal achieved" was Laplace-approximation artifact on parameters the §5 protocol does not constrain. The honest framing in v0.4: greybox machinery runs end-to-end against real Phase 1 physics, but the inverse-identification structure under joint fit cannot extract production-defensible posteriors. The staged structure (within Cx) and continuous-operational refinement (across years) are the structural fix. This adds time to the path-to-pilot but produces measurement that is defensible against a Tier-1 due-diligence reviewer.
 
 ---
 
 ## Open questions for next session
 
-1. **Ridge resolution: 48h passive first.** The cheapest experiment. Reuse G8's machinery against a 48h synthetic trajectory rather than 12h. If `R_opaque` and `ceiling_coupling_factor` resolve, the §11.2 amendment's expected-tightness predictions get pinned and the §5 leg moves toward production-threshold retirement. If the ridge persists, the path forks to §6 active perturbation (waits on F5/F6) or reparametrization.
+1. **AIVU Temporal Identification Architecture skeleton (T1, top priority).** First task of next session. Skeleton draft articulating: the regime classification, the per-parameter horizon profile, the data-flow architecture. Doesn't need to be complete; needs to be specific enough that T2-T6 amendments can begin to be drafted against it.
 
-2. **Phase 2 Increment 8 read.** Before drafting `aivu_hvac_greybox` H1 spec, read Increment 8 to extract the canonical HVAC parameter set (D17/D19/D20 bi-quadratic + D18 cabinet UA, plus anything else) and any pre-existing forward-side invariants the inverse package will inherit. Mechanical work — likely <1 session of reading.
+2. **§5.3 amendment first cut (T2).** Once T1 skeleton lands, the §5.3 amendment can be drafted in parallel. First cut: which parameters in which stage, which residual weighting per stage, how posteriors propagate stage-to-stage.
 
-3. **`aivu_hpm` scoping conversation.** Pre-spec walk-through with JDS to settle: shape of the bounded MRAC inner loop in code; where the phase state machine lives across the 7-day protocol; sub-100ms determinism as v0.1 target vs v0.2 target; standalone-mode behavior priorities. Once these are settled, §1 spec drafting begins.
+3. **Mathematical framework choice for the staged likelihood.** Options surfaced 2026-05-16 afternoon: (a) regime-stratified time-domain residual sum with regime-specific weights; (b) frequency-domain (FFT/Welch) likelihood with band-specific weights; (c) hybrid. Decision belongs in T1/T2; first cut likely (a) for implementability with (b) as v0.2 evolution.
 
-4. **2026-05-15 HPM-in-circuit-box outcome — STATUS UNKNOWN AS OF v0.3.** v0.2 flagged this as an open question for the 2026-05-15 session. The 2026-05-15 work focused on §11.2 + G7 + G8 and did not surface a hardware status update. Whether hardware actually arrived, and whether hardware-in-the-loop testing is feasible from Claude's environment or requires a partner working against the physical device, is not yet captured in any committed artifact. JDS to confirm or update.
+4. **HPM-in-circuit-box hardware status — STATUS STILL UNKNOWN as of v0.4.** Carried forward from v0.3. JDS to confirm.
 
-5. **`aivu_integrity` outside cryptographic review.** Who reviews the pilot-floor crypto before pilot data ships.
+5. **§11.x amendment scope (T4).** Once T1 articulates the per-parameter horizon assignment, the §11.x amendment formalizes it in the canonical-parameter-set document. <1 session once T1 lands.
 
-6. **Vocabulary update workstream across AIVU docs.** Greybox §§5-12 done 2026-05-16. Still pending: Architectural Distillation (cold-start upload, currently still describes 5-Day protocol), System Arch v3.0.1 (currently describes 5-Day in §3), OS doc v9.5, Phoenix Pilot Roadmap, partner-facing materials. Carrying-party assignment per document.
+6. **§12.x amendment scope (T5).** Signed-record schema evolution for per-parameter epistemic status with vintage. Schema-evolution path so v0.1 records remain readable.
 
-7. **Architectural Distillation update.** The Distillation in cold-start uploads still describes a 5-Day protocol and does not name the MRAC principle. Per Working Preferences, cold-start docs are operationally canonical — every new session that opens without further context forms an obsolete mental model. High-leverage hygiene; <0.5 session.
+7. **Architectural Distillation update.** Still pending from v0.3. Now even more important because the Distillation is what new Claude sessions read at cold-start, and the v0.4 architectural insights will shape every future session's framing. ~0.5 session.
+
+8. **Whether to commit `test_recovery_at_48h_passive` and `g8a_diagnostic.py` to the repo.** Currently uncommitted in JDS's local clone. Argument for committing: future replication of today's diagnostic. Argument against: the staged-fit code will supersede this test machinery within a few sessions, and committing it now creates dead-weight test code. Recommendation: commit only `g8a_diagnostic.py` as a one-time-experiment record, with a docstring noting it superseded by staged-fit machinery once T7 lands.
+
+9. **Day-Numbering Reconciliation Phases 2-4.** Mechanical work; can land alongside T7's code rewrite or as a standalone commit before. Either order works.
 
 ---
 
-*End of v0.3. Reconciles state after the 2026-05-15 session (§11.2 lock, G7, G8) and the 2026-05-16 day-numbering Phase 1 commit. Replaces v0.2 of 2026-05-14, which had become materially stale during the 2026-05-15 work and was not updated at that session's close. v0.3 lands the discipline added in the header: this document must be updated whenever a commit changes the state of any artifact it names, in the same session as the commit.*
+*End of v0.4. Drafted 2026-05-16 afternoon after the diagnostic dive on the 48h closed-loop test. Captures two architectural insights (sequential identification by frequency band within Cx; temporal identification across Cx and continuous operation) that reshape the project's measurement architecture. Replaces v0.3 of 2026-05-16 morning on the measurement-architecture story; v0.3's procedural-fix story (cold-start canonical, session-start verification protocol, end-of-session checklist) is unchanged in v0.4.*
