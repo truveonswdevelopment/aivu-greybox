@@ -224,7 +224,7 @@ def _synthesize_day45_window_measured_hvac(
     context: HomeStaticContext,
     day4_posterior: Day4Posterior,
     fan_power_w: float = FAN_POWER_W_FROM_DAY12,
-    eta_distribution: float = 0.90,
+    eta_distribution: float = 1.0,
     moisture_removal_kg_per_s: float = 1.0e-4,
     phase_durations_s: tuple[float, float, float, float] | None = None,
     obs_noise_t_main_c: float = 0.02,
