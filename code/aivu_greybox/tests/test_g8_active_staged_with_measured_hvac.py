@@ -299,7 +299,14 @@ def _synthesize_day45_window_measured_hvac(
                 t_odb_f, t_wbe_f_indoor
             )
             cooling_capacity_w = q_delivered_btuh / _BTUH_PER_W
-            q_sens_w[i] = -cooling_capacity_w + eta_distribution * fan_power_w
+            # D17 delivers TOTAL capacity (sensible + latent). The sensible
+            # balance must see sensible-only: subtract the latent enthalpy
+            # flow of the moisture the coil removes. h_fg from ASHRAE
+            # (psychrometrics.moist_air_enthalpy_kj_per_kg), kJ/kg -> J/kg.
+            h_fg_j_per_kg = (2501.0 + 1.86 * t_indoor_return_c) * 1000.0
+            q_latent_w = moisture_removal_kg_per_s * h_fg_j_per_kg
+            cooling_capacity_sensible_w = cooling_capacity_w - q_latent_w
+            q_sens_w[i] = -cooling_capacity_sensible_w + eta_distribution * fan_power_w
             m_lat[i] = -moisture_removal_kg_per_s
         elif fan_on[i]:
             q_sens_w[i] = eta_distribution * fan_power_w
