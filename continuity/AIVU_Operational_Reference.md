@@ -75,7 +75,12 @@ code/aivu_greybox/                     The Python package
                                        psychrometrics, etc.)
   tests/                               Pytest suite (test_g8_closed_loop.py,
                                        test_passive_fit.py, etc.)
+    fixtures/                          Committed test data — Phoenix_AMY_2024.epw
   pyproject.toml, README.md
+
+check_env.sh                           Environment self-check (repo root)
+run_tests.sh                           Test runner via the repo's own venv (repo root)
+.venv/                                 Virtual environment (repo root; gitignored)
 
 spec/                                  Sec 1-12 v0.1 series spec documents
                                        (plus the Sec 11.2 amendment file)
@@ -220,6 +225,8 @@ This confirms both clones exist, shows what's at top level, and prints the GitHu
 
 **If a clone is missing,** that's a real problem and Claude must stop and surface to JDS rather than trying to re-create it from scratch.
 
+Once the clones are confirmed, `bash ~/aivu-greybox/check_env.sh` verifies the greybox environment itself is intact (venv, pytest, scientific libraries, weather fixture) before any test work begins.
+
 ---
 
 ## GitHub authentication on JDS's Mac
@@ -233,15 +240,18 @@ Authentication for `git push` works without prompting JDS for credentials. The c
 
 ---
 
-## Python environment notes
+## Python environment — use the repo's own scripts, do not transcribe paths
 
-The greybox package runs under a virtual environment. To run tests or invoke Python tooling from the command line, use the venv's Python directly rather than the system Python:
+The greybox package runs under a virtual environment at **`~/aivu-greybox/.venv/`** — at the repo root, NOT under `code/aivu_greybox/`. pytest, numpy, and scipy are installed inside that venv only; system `python` will fail because they are not installed system-wide.
 
-```
-~/aivu-greybox/code/aivu_greybox/.venv/bin/python -m pytest
-```
+Two committed scripts at the greybox repo root make the environment describe and verify itself, so no session ever has to transcribe the venv path again (transcription is what produced the 2026-05-20 failures — a venv path, a test-path prefix, and a sandbox path all stale at once):
 
-System `python` invocations have caused issues in the past because numpy and scipy aren't installed at the system level. This was registered as a fix in the 2026-05-15 Pass B commit.
+- **`bash ~/aivu-greybox/check_env.sh`** — verifies the environment in plain English: venv present, pytest installed, numpy/scipy import, Phoenix EPW fixture in place. Reports `ALL GOOD` or a specific failure. Run this first whenever an environment problem is suspected, or at the start of any work session.
+- **`bash ~/aivu-greybox/run_tests.sh [pytest args]`** — runs the test suite via the repo's own venv. Finds the venv itself. Example: `bash ~/aivu-greybox/run_tests.sh code/aivu_greybox/tests/test_g8_closed_loop.py -v`.
+
+Because both scripts live inside the repo, they travel with it and cannot drift from it the way a path written in this document can. If a script and this prose ever disagree, the script is correct.
+
+**Test weather fixture.** Tests that need Phoenix weather load `Phoenix_AMY_2024.epw` from `code/aivu_greybox/tests/fixtures/`. The file is committed to the repo and travels with it. `epw_loader.py` also honours an `AIVU_PHOENIX_EPW_PATH` environment variable as an override, but no override is needed for a normal clone — the fixture is found automatically.
 
 ---
 
