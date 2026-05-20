@@ -275,9 +275,7 @@ def get_phoenix_2024_epw() -> EPWHourlyData:
 
     The EPW file is searched for in several locations in priority order:
       1. AIVU_PHOENIX_EPW_PATH environment variable, if set
-      2. /mnt/user-data/uploads/Phoenix_AMY_2024.epw (the path it was
-         uploaded to in the development session)
-      3. tests/fixtures/Phoenix_AMY_2024.epw relative to this module
+      2. tests/fixtures/Phoenix_AMY_2024.epw relative to this module
     """
     global _CACHED_EPW
     if _CACHED_EPW is not None:
@@ -287,7 +285,6 @@ def get_phoenix_2024_epw() -> EPWHourlyData:
     env_path = os.environ.get("AIVU_PHOENIX_EPW_PATH")
     if env_path:
         candidates.append(env_path)
-    candidates.append("/mnt/user-data/uploads/Phoenix_AMY_2024.epw")
     # Relative-to-source fallback
     here = os.path.dirname(os.path.abspath(__file__))
     candidates.append(os.path.join(here, "..", "..", "tests", "fixtures", "Phoenix_AMY_2024.epw"))
