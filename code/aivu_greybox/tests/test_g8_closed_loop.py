@@ -95,11 +95,11 @@ from aivu_greybox.real_chain import RealForwardChain
 #   C_house                 = 4.5e6  (-0.7σ — slightly less thermal mass)
 #   C_stack                 = 0.55   (+0.2σ — slightly above S-G nominal)
 #   C_wind                  = 0.085  (-0.2σ — slightly below S-G nominal)
-#   C_w                     = 45.0   (-0.3σ — slightly less moisture buffer)
+#   C_w                     = 2100   (-0.3σ — SI kg; §11.2 Option B re-base 2026-05-21)
 #   ceiling_coupling_factor = 0.85   (+0.4σ — modest as-built bypass paths)
 
 THETA_TRUE_PERTURBED: np.ndarray = np.array(
-    [1.10, 0.95, 4.5e6, 1.05, 1.15, 45.0, 0.85]
+    [1.10, 0.95, 4.5e6, 1.05, 1.15, 2100.0, 0.85]
 )
 
 

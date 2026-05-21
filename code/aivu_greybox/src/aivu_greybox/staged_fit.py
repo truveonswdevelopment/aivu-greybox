@@ -422,9 +422,28 @@ def _laplace_with_objective(
         "C_house": 1e5,
         "C_stack": 0.0,
         "C_wind": 0.0,
-        "C_w": 1.0,
+        "C_w": 1000.0,  # kg; C_w cannot fall below the bare conditioned-air
+                        # mass (~857 kg). The floor sits just above it so the
+                        # real_chain C_w→kappa_buffer conversion stays positive.
         "ceiling_coupling_factor": 0.0,
     }
+
+    # Optimizer coordinate normalization (2026-05-21 fix).
+    # The seven canonical parameters span ~7 orders of magnitude (R_opaque ~1
+    # to C_house ~5e6). L-BFGS-B applies one step length and one inverse-
+    # Hessian scaling across all coordinates at once, so a large-magnitude
+    # parameter is effectively frozen: its gradient is correct but unusable at
+    # a step size shared with order-1 parameters, and the optimizer returns
+    # success having never moved it. This silently biased C_house recovery
+    # (recovered 4.893e6 vs truth 4.5e6, bit-identical across runs) until the
+    # 2026-05-21 diagnosis. The fix runs L-BFGS-B in normalized coordinates
+    # u = theta / scale, with scale = prior marginal sigma (strictly positive;
+    # makes the prior curvature isotropic), and unscales at the boundary.
+    scale = prior.marginal_sigmas.copy()
+    scale = np.where(scale > 0.0, scale, 1.0)  # defensive; marginal sigmas are > 0
+
+    def objective_normalized(u: np.ndarray) -> float:
+        return objective(u * scale)
 
     for r in range(num_restarts):
         if r == 0:
@@ -444,14 +463,19 @@ def _laplace_with_objective(
             lower = max(positive_floors.get(name, 0.0), bounds[i][0])
             bounds[i] = (lower, bounds[i][1])
 
+        # Run L-BFGS-B in normalized coordinates; unscale the result.
+        start_u = start / scale
+        bounds_u = [
+            (lo / scale[i], hi / scale[i]) for i, (lo, hi) in enumerate(bounds)
+        ]
         result = minimize(
-            objective,
-            x0=start,
+            objective_normalized,
+            x0=start_u,
             method="L-BFGS-B",
-            bounds=bounds,
+            bounds=bounds_u,
             options={"ftol": 1e-9, "gtol": 1e-7, "maxiter": 200},
         )
-        restart_modes[r] = result.x
+        restart_modes[r] = result.x * scale
         restart_log_posteriors[r] = -result.fun
         converged_flags[r] = bool(result.success)
 
@@ -477,6 +501,12 @@ def _laplace_with_objective(
     best_restart = int(np.argmax(restart_log_posteriors))
     mode = restart_modes[best_restart]
 
+    # NOTE (2026-05-21): the optimizer above runs in normalized coordinates to
+    # fix the conditioning bug that froze C_house. The Hessian below is still
+    # raw-coordinate finite-differenced; whether it needs the same treatment is
+    # settled by the post-fix active (§6) rerun — if the mode is now correct
+    # but the recovered sigma is not, normalize this step the same way. See the
+    # 2026-05-21 session log.
     hessian = finite_difference_hessian(objective, mode)
     eigenvalues = np.linalg.eigvalsh(hessian)
     positive_definite = bool(np.all(eigenvalues > 0))

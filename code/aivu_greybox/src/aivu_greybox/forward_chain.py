@@ -133,6 +133,16 @@ class StateTrajectory:
     t_main_c: np.ndarray  # shape (N,)
     w_main_kg_per_kg: np.ndarray  # shape (N,)
     t_attic_c: np.ndarray  # shape (N,)
+    # Applied HVAC excitation, greybox convention (q_sens_w in W with
+    # positive = heat added; m_lat in kg water/s with positive = moisture
+    # added), at the same 1-Hz cadence as the trajectory. Populated by
+    # RealForwardChain.run from the integrator's actually-applied per-substep
+    # values, resampled to the observation grid. The §6 measured-HVAC
+    # synthesizer reads these to record the physically consistent excitation
+    # that a live-evaluation HVAC provider produced. None when not
+    # populated (e.g. StubForwardChain, or callers that do not need it).
+    q_sens_w_applied: np.ndarray | None = None
+    m_lat_kg_per_s_applied: np.ndarray | None = None
 
 
 class ForwardChain(Protocol):

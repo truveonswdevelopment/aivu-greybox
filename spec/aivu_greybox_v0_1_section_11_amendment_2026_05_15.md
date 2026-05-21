@@ -161,10 +161,21 @@ wind variation across the fit window to be identified; Phoenix is
 relatively low-wind, so `C_wind` is expected to be the loosest of the
 two and the §8 identifiability report should be checked carefully.
 
-### `C_w` (latent capacitance, unchanged from v0.1)
+### `C_w` (kg, latent moisture capacitance — corrected 2026-05-21, Option B)
 
-Whole-house lumped latent moisture capacitance. Unchanged from v0.1.
-Forward-chain entry is `run_dynamic`'s `kappa_buffer_override`.
+Whole-house lumped latent moisture capacitance, carried in SI (kg) —
+the latent twin of `C_house`. The v0.1 wording ("Forward-chain entry is
+`run_dynamic`'s `kappa_buffer_override`") was a specification defect:
+`kappa_buffer_override` is the κ_buffer *coefficient* slot (~0.05,
+lb water/(lb-dry-air·ft²)), not a capacitance, so routing a whole-house
+capacitance into it directly is a category error. Corrected 2026-05-21
+(Option B): the real-chain adapter converts `C_w` to the κ_buffer
+coefficient by inverting `capacitance.py`'s affine map
+`C_w = m_air + κ_buffer · A_interior`, i.e.
+`kappa_buffer = (C_w − m_air) / A_interior`, with the SI→imperial step
+and `m_air` / `A_interior` taken from the home geometry exactly as
+`capacitance.py` computes them — parallel to the `C_house` entry, which
+carries the whole-house capacitance and names its conversion.
 
 ### `ceiling_coupling_factor` (dimensionless multiplier, unchanged from v0.1)
 
@@ -271,7 +282,7 @@ foam-deck attic.
 | `C_house`                  | 5.0 × 10⁶ J/K             | 7.5 × 10⁵              | Unchanged from v0.1.                                                               |
 | `C_stack`                  | TBD (operational equiv.)  | wide                   | Set so that derived-cfm50 at design ΔT matches nameplate cfm50 ± 50%.              |
 | `C_wind`                   | TBD (operational equiv.)  | wide                   | Set so that derived-cfm50 at design wind matches nameplate cfm50 ± 50%.            |
-| `C_w`                      | 50                        | 15                     | Unchanged from v0.1.                                                               |
+| `C_w`                      | 2400 kg                   | 1000                   | Whole-house latent capacitance, SI (kg). Re-based 2026-05-21 (Option B): known air-mass offset (~857 kg) + buffering term across the κ_buffer literature range. |
 | `ceiling_coupling_factor`  | 0.75                      | 0.25                   | Unchanged from v0.1 (AOT §3.2 placeholder).                                        |
 
 The two C_stack / C_wind values need a translation from "nameplate

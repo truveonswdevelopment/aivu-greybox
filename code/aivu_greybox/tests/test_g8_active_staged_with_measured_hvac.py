@@ -18,8 +18,9 @@ Pipeline:
 
 fan_power_w is a constant input here (architecturally measured during Days 1-2
 fan-only Eaton telemetry; surfaced as a Day2Posterior field is a tracked v0.3
-schema enhancement). eta_distribution and moisture_removal_kg_per_s remain as
-synthesizer inputs per the v0.2 scope reduction.
+schema enhancement). eta_distribution remains a synthesizer input. The latent
+fraction of the cooling load is no longer hand-set: it is derived per-sample
+from the coil SHR (F5 D19 bi-quadratic) and the delivered total capacity.
 
 If Stage 3's 2.1σ C_house bias from this morning's fabricated-HVAC run persists
 here, the bias is NOT the perfect-HVAC assumption — it's something else. If
@@ -70,7 +71,7 @@ from aivu_greybox.psychrometrics import (
     P_ATM_PHOENIX_PA,
     saturation_vapor_pressure_pa,
 )
-from aivu_greybox.real_chain import RealForwardChain
+from aivu_greybox.real_chain import RealForwardChain, make_live_hvac_provider
 from aivu_greybox.staged_fit import (
     STAGE_3,
     STAGE_4,
@@ -79,6 +80,7 @@ from aivu_greybox.staged_fit import (
 )
 from aivu_physics_phase2.equipment_output import (
     BiQuadraticCoefficients,
+    PLACEHOLDER_D19_SHR,
 )
 from aivu_hvac_greybox.bi_quadratic_fit import (
     Prior,
@@ -225,7 +227,6 @@ def _synthesize_day45_window_measured_hvac(
     day4_posterior: Day4Posterior,
     fan_power_w: float = FAN_POWER_W_FROM_DAY12,
     eta_distribution: float = 1.0,
-    moisture_removal_kg_per_s: float = 1.0e-4,
     phase_durations_s: tuple[float, float, float, float] | None = None,
     obs_noise_t_main_c: float = 0.02,
     obs_noise_t_attic_c: float = 0.02,
@@ -238,8 +239,9 @@ def _synthesize_day45_window_measured_hvac(
     Structurally mirrors _synthesize_day45_window_real_chain from the original
     fabricated-HVAC test, but Phase A cooling_capacity_w is no longer a
     hard-coded constant — it's queried per-time-step from Day4Posterior at the
-    prevailing (T_odb, T_wbe). Everything else (fan schedule, weather, latent
-    excitation, telemetry construction) unchanged.
+    prevailing (T_odb, T_wbe), and the sensible/latent split of that capacity
+    is derived from the coil SHR (F5 D19) rather than a hand-set moisture rate.
+    Fan schedule, weather, and telemetry construction are unchanged.
     """
     rng = np.random.default_rng(seed)
 
@@ -283,40 +285,35 @@ def _synthesize_day45_window_measured_hvac(
             within_d = s - phase_c_end
             fan_on[i] = (within_d % 3600) < 600
 
-    # Indoor T_wbe approximation for Phase A operating-point selection.
-    t_indoor_return_c = context.initial_t_main_c
-    w_indoor_return = context.initial_w_main_kg_per_kg
-    t_wbe_f_indoor = _t_wbe_from_indoor_return_f(t_indoor_return_c, w_indoor_return)
+    # HVAC excitation — live-evaluated equipment characterization.
+    # Delivered cooling capacity and the coil SHR both depend on the indoor
+    # entering wet-bulb, which evolves as the house is conditioned. A live
+    # provider evaluates day4_posterior (capacity) and the D19 SHR against
+    # the integrator's current state at every substep, so the sensible/
+    # latent split tapers physically as the air dries — instead of being
+    # frozen at the initial-condition wet-bulb. The excitation the provider
+    # actually applies is read back from the run and recorded as this
+    # window's measured HVAC trace — the same trace the fit consumes.
+    t_hours_grid = (monotonic_ns - int(monotonic_ns[0])) / 1.0e9 / 3600.0
+    compressor_on_grid = seconds_since_start < phase_a_end
+    live_provider = make_live_hvac_provider(
+        day4_posterior=day4_posterior,
+        shr_model=PLACEHOLDER_D19_SHR,
+        t_hours_grid=t_hours_grid,
+        t_outdoor_c=t_outdoor,
+        compressor_on=compressor_on_grid,
+        fan_on=fan_on,
+        fan_power_w=fan_power_w,
+        eta_distribution=eta_distribution,
+    )
 
-    # HVAC excitation — MEASURED cooling capacity in Phase A.
-    q_sens_w = np.zeros(n_samples)
-    m_lat = np.zeros(n_samples)
-    for i in range(n_samples):
-        s = seconds_since_start[i]
-        if s < phase_a_end:
-            t_odb_f = t_outdoor[i] * 9.0 / 5.0 + 32.0
-            q_delivered_btuh, _ = day4_posterior.evaluate_q_delivered(
-                t_odb_f, t_wbe_f_indoor
-            )
-            cooling_capacity_w = q_delivered_btuh / _BTUH_PER_W
-            # D17 delivers TOTAL capacity (sensible + latent). The sensible
-            # balance must see sensible-only: subtract the latent enthalpy
-            # flow of the moisture the coil removes. h_fg from ASHRAE
-            # (psychrometrics.moist_air_enthalpy_kj_per_kg), kJ/kg -> J/kg.
-            h_fg_j_per_kg = (2501.0 + 1.86 * t_indoor_return_c) * 1000.0
-            q_latent_w = moisture_removal_kg_per_s * h_fg_j_per_kg
-            cooling_capacity_sensible_w = cooling_capacity_w - q_latent_w
-            q_sens_w[i] = -cooling_capacity_sensible_w + eta_distribution * fan_power_w
-            m_lat[i] = -moisture_removal_kg_per_s
-        elif fan_on[i]:
-            q_sens_w[i] = eta_distribution * fan_power_w
-            m_lat[i] = 0.0
-        else:
-            q_sens_w[i] = 0.0
-            m_lat[i] = 0.0
-
+    # HVACExcitation here carries only the observation time grid; the live
+    # provider supplies the actual excitation, so q_sens_w / m_lat are
+    # placeholders that real_chain.run ignores when hvac_provider is given.
     hvac = HVACExcitation(
-        monotonic_ns=monotonic_ns, q_sens_w=q_sens_w, m_lat_kg_per_s=m_lat
+        monotonic_ns=monotonic_ns,
+        q_sens_w=np.zeros(n_samples),
+        m_lat_kg_per_s=np.zeros(n_samples),
     )
     weather = WeatherSeries(
         monotonic_ns=monotonic_ns,
@@ -326,7 +323,15 @@ def _synthesize_day45_window_measured_hvac(
         wind_speed_m_per_s=wind,
     )
 
-    truth = real_chain.run(theta_true, hvac, weather, context)
+    truth = real_chain.run(
+        theta_true, hvac, weather, context, hvac_provider=live_provider
+    )
+
+    # The physically consistent HVAC trace the live provider produced,
+    # recorded as this window's measured excitation. Real-pilot model: the
+    # fit consumes a recorded trace — here generated by live evaluation.
+    q_sens_w = truth.q_sens_w_applied
+    m_lat = truth.m_lat_kg_per_s_applied
 
     # Per-sample telemetry construction unchanged from fabricated-HVAC test.
     samples: list[FanHeatSample] = []

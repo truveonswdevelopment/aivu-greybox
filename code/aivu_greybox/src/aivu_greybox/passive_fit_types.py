@@ -119,18 +119,21 @@ def make_acca_manual_j_fallback_prior(provenance_hash: str = "") -> Prior7D:
     # C_wind                   = 1.0   dimensionless multiplier on ASHRAE Sherman-Grimsrud
     #                                  wind coefficient (Phase 1's C_W_WIND = 1.74e-4,
     #                                  HoF Ch. 16 Table 6 shelter class 3). 1.0 = nominal.
-    # C_w                      = 50    latent moisture capacitance proxy
+    # C_w                      = 2400  kg, whole-house lumped latent moisture
+    #                                  capacitance (§11.2 Option B; SI, 2026-05-21)
     # ceiling_coupling_factor  = 0.75  per AOT §3.2 placeholder (unchanged from v0.1)
-    mean = np.array([1.0, 1.0, 5.0e6, 1.0, 1.0, 50.0, 0.75])
+    mean = np.array([1.0, 1.0, 5.0e6, 1.0, 1.0, 2400.0, 0.75])
 
     # Marginal standard deviations per §11.2 amendment table.
     # σ widths chosen to span the expected as-built deviation range:
-    #   R_opaque ±15%, U_fenestration ±10%, C_house ±15%, C_w ±30%,
+    #   R_opaque ±15%, U_fenestration ±10%, C_house ±15%, C_w ±42%,
     #   ceiling_coupling_factor ±33%. C_stack and C_wind σ derived from
     #   Sherman-Grimsrud table variance: C_stack 20% (inter-home internal
     #   air-path variability for 1-story homes), C_wind 40% (shelter-class
     #   2 to 4 spans roughly ±40% of class-3 default).
-    sigmas = np.array([0.15, 0.10, 7.5e5, 0.20, 0.40, 15.0, 0.25])
+    #   C_w σ spans the κ_buffer literature range (~0.05–0.81); wide because
+    #   κ_buffer is uncalibrated until pilot humidity telemetry.
+    sigmas = np.array([0.15, 0.10, 7.5e5, 0.20, 0.40, 1000.0, 0.25])
     # Diagonal covariance (Manual J does not give correlated information)
     cov = np.diag(sigmas ** 2)
 

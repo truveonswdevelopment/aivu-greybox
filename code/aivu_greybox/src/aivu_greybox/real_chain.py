@@ -186,12 +186,14 @@ from aivu_physics import loads as L
 from aivu_physics.geometry import nolan_8560 as N
 from aivu_physics.geometry.site import Site
 
+from aivu_dynamic.capacitance import house_moisture_capacity
 from aivu_dynamic.dynamic import run_dynamic
 from aivu_dynamic.excitation import Custom, HVACScheduleProvider
 from aivu_dynamic.integrator import IntegratorSpec
 from aivu_dynamic.state import DynamicState
 
 from .defaults import CANONICAL_PARAMETER_NAMES, NUM_CANONICAL_PARAMETERS
+from .psychrometrics import P_ATM_PHOENIX_PA, saturation_vapor_pressure_pa
 from .forward_chain import (
     ForwardChain,
     HomeStaticContext,
@@ -220,6 +222,10 @@ _KG_PER_S_TO_LB_PER_HR: float = 3600.0 * 2.20462
 
 # ft²/m² (greybox carries floor_area_m2; Phase 1 carries floor_area_ft²).
 _FT2_PER_M2: float = 10.7639104
+
+# kg → lb. Greybox carries C_w in SI (kg dry-air-equivalent), matching
+# C_house's SI convention; aivu_dynamic's moisture capacity is imperial (lb).
+_LB_PER_KG: float = 2.20462
 
 
 def _c_to_f(t_c: float) -> float:
@@ -377,6 +383,123 @@ def _make_hvac_provider(
 
     def m_func(t_hours, x, cfg, hour, wfile, occupancy_flag, rec):
         return float(m_lb_per_hr[_lookup_idx(t_hours)])
+
+    return Custom(Q_func=q_func, M_func=m_func)
+
+
+# ---------------------------------------------------------------------------
+# Live-evaluation HVAC provider — §6 measured-HVAC synthesis
+# ---------------------------------------------------------------------------
+
+
+def _t_wbe_indoor_f(t_in_f: float, w_in: float) -> float:
+    """Approximate indoor entering wet-bulb (°F) from indoor (T_in, W_in).
+
+    Psychrometric approximation matching the project's established form
+    (cf. the §6 synthesizer's _t_wbe_from_indoor_return_f). Used by the
+    live HVAC provider to evaluate the equipment characterization at the
+    wet-bulb basis that characterization was built against.
+    """
+    t_in_c = (t_in_f - 32.0) * 5.0 / 9.0
+    p_w = w_in * P_ATM_PHOENIX_PA / (0.62198 + w_in)
+    p_sat = saturation_vapor_pressure_pa(t_in_c)
+    rh_fraction = float(np.clip(p_w / p_sat, 0.005, 0.995))
+    return t_in_f - (1.0 - rh_fraction) * 20.0
+
+
+def make_live_hvac_provider(
+    *,
+    day4_posterior: Any,
+    shr_model: Any,
+    t_hours_grid: np.ndarray,
+    t_outdoor_c: np.ndarray,
+    compressor_on: np.ndarray,
+    fan_on: np.ndarray,
+    fan_power_w: float,
+    eta_distribution: float,
+) -> HVACScheduleProvider:
+    """Build a state-aware HVAC provider that evaluates the equipment
+    characterization live at each integrator substep.
+
+    The §6 measured-HVAC excitation is not a fixed trace: delivered cooling
+    capacity and the coil SHR both depend on the indoor entering wet-bulb,
+    which evolves as the house is conditioned. This provider evaluates
+    `day4_posterior` (delivered total capacity) and `shr_model` (sensible
+    heat ratio) at the live wet-bulb derived from the integrator state `x`
+    on every call, so the sensible/latent split tapers physically as the
+    air dries. Used by the §6 synthesizer to generate a physically
+    consistent excitation trace; the greybox fit then consumes that trace
+    via `_make_hvac_provider`, exactly as it would consume real telemetry.
+
+    Args:
+        day4_posterior:  Equipment capacity characterization. Must expose
+                         `evaluate_q_delivered(t_odb_f, t_wbe_f) -> (q_btuh, _)`.
+        shr_model:       Coil SHR characterization. Must expose
+                         `evaluate(t_odb_f, t_wbe_f) -> float`.
+        t_hours_grid:    Hours-from-t0 at the 1-Hz schedule cadence.
+        t_outdoor_c:     Outdoor dry-bulb, °C, on `t_hours_grid`.
+        compressor_on:   Bool array on `t_hours_grid` — compressor running.
+        fan_on:          Bool array on `t_hours_grid` — air handler running.
+        fan_power_w:     Fan electrical power, W.
+        eta_distribution: Fraction of fan power appearing as conditioned-
+                          space sensible heat.
+
+    Returns:
+        A `Custom` provider whose commands are aivu_dynamic convention
+        (BTU/hr, lb water/hr; positive = HVAC removes).
+    """
+    def _idx(t_hours: float) -> int:
+        i = int(np.searchsorted(t_hours_grid, t_hours))
+        if i < 0:
+            return 0
+        if i >= len(t_hours_grid):
+            return len(t_hours_grid) - 1
+        return i
+
+    def _split(t_hours: float, x: DynamicState) -> tuple[float, float]:
+        i = _idx(t_hours)
+        t_odb_f = _c_to_f(float(t_outdoor_c[i]))
+        # Fan distribution heat is sensible and present whenever the air
+        # handler runs; it is not split.
+        fan_sens_w = eta_distribution * fan_power_w if bool(fan_on[i]) else 0.0
+        if bool(compressor_on[i]):
+            # Live evaluation against the current indoor wet-bulb.
+            t_wbe_f = _t_wbe_indoor_f(x.T_in_F, x.W_in)
+            q_total_btuh, _ = day4_posterior.evaluate_q_delivered(t_odb_f, t_wbe_f)
+            q_total_w = float(q_total_btuh) / _W_TO_BTUH
+            shr = float(np.clip(shr_model.evaluate(t_odb_f, t_wbe_f), 0.0, 1.0))
+            q_cooling_sens_w = q_total_w * shr
+            q_latent_w = q_total_w * (1.0 - shr)
+            t_in_c = _f_to_c(x.T_in_F)
+            h_fg_j_per_kg = (2501.0 + 1.86 * t_in_c) * 1000.0
+            m_removal_kg_s = q_latent_w / h_fg_j_per_kg
+        else:
+            q_cooling_sens_w = 0.0
+            m_removal_kg_s = 0.0
+        # aivu_dynamic convention: positive = HVAC removes. Cooling removes
+        # sensible heat; the fan adds it. Moisture removal is positive.
+        q_hvac_sens_btuh = (q_cooling_sens_w - fan_sens_w) * _W_TO_BTUH
+        m_hvac_lat_lb_hr = m_removal_kg_s * _KG_PER_S_TO_LB_PER_HR
+        return q_hvac_sens_btuh, m_hvac_lat_lb_hr
+
+    # One-deep memo: Custom calls Q_func then M_func back-to-back at the
+    # same (t, x), so caching the last split halves the characterization
+    # evaluations. RK4's four k-stages use distinct x; the cache flips
+    # each time, which is correct.
+    _cache: dict[tuple[float, float, float], tuple[float, float]] = {}
+
+    def _split_cached(t_hours: float, x: DynamicState) -> tuple[float, float]:
+        key = (t_hours, x.T_in_F, x.W_in)
+        if key not in _cache:
+            _cache.clear()
+            _cache[key] = _split(t_hours, x)
+        return _cache[key]
+
+    def q_func(t_hours, x, cfg, hour, wfile, occupancy_flag, rec):
+        return _split_cached(t_hours, x)[0]
+
+    def m_func(t_hours, x, cfg, hour, wfile, occupancy_flag, rec):
+        return _split_cached(t_hours, x)[1]
 
     return Custom(Q_func=q_func, M_func=m_func)
 
@@ -551,6 +674,8 @@ class RealForwardChain:
         hvac: HVACExcitation,
         weather: WeatherSeries,
         context: HomeStaticContext,
+        *,
+        hvac_provider: HVACScheduleProvider | None = None,
     ) -> StateTrajectory:
         if theta.shape != (NUM_CANONICAL_PARAMETERS,):
             raise ValueError(
@@ -567,9 +692,28 @@ class RealForwardChain:
         c_house_btu_per_f = c_house_si * _J_PER_K_TO_BTU_PER_F
         c_eff_per_ft2 = c_house_btu_per_f / floor_area_ft2
 
-        # C_w pass-through (units convention not yet tight; see §11.2
-        # amendment notes on provisional unit alignment)
-        kappa_buffer = c_w
+        # C_w: greybox SI latent capacitance (kg dry-air-equivalent) →
+        # aivu_dynamic's kappa_buffer coefficient. capacitance.
+        # house_moisture_capacity applies the affine map
+        #     C_w_used[lb] = m_air + kappa_buffer · A_interior
+        # and run_dynamic exposes only the kappa_buffer slot, so the adapter
+        # inverts that map — the latent twin of the C_house conversion above:
+        # greybox carries the whole-house capacitance, the adapter converts
+        # it to the per-unit coefficient run_dynamic consumes. m_air and
+        # A_interior are pinned exactly by evaluating the public capacity
+        # function at two kappa values (it is affine in kappa), so this stays
+        # correct if capacitance.py's internal constants are recalibrated.
+        _cap_at_kappa_1 = house_moisture_capacity(
+            N.A_CONDITIONED_FLOOR_FT2, INF.V_CONDITIONED_FT3,
+            kappa_buffer_override=1.0,
+        )
+        _cap_at_kappa_2 = house_moisture_capacity(
+            N.A_CONDITIONED_FLOOR_FT2, INF.V_CONDITIONED_FT3,
+            kappa_buffer_override=2.0,
+        )
+        a_interior_ft2 = _cap_at_kappa_2 - _cap_at_kappa_1
+        m_air_lb = _cap_at_kappa_1 - a_interior_ft2
+        kappa_buffer = (c_w * _LB_PER_KG - m_air_lb) / a_interior_ft2
 
         # Initial state: greybox °C → aivu_dynamic °F
         initial_state = DynamicState(
@@ -577,9 +721,15 @@ class RealForwardChain:
             W_in=context.initial_w_main_kg_per_kg,
         )
 
-        # HVAC excitation
+        # HVAC excitation. Default: wrap the trace HVACExcitation as a
+        # time-lookup provider. The §6 measured-HVAC synthesizer instead
+        # passes a pre-built state-aware provider (live characterization
+        # evaluation); `hvac` then supplies only the observation time grid.
         t0_ns = int(hvac.monotonic_ns[0])
-        excitation = _make_hvac_provider(hvac, t0_ns)
+        if hvac_provider is not None:
+            excitation = hvac_provider
+        else:
+            excitation = _make_hvac_provider(hvac, t0_ns)
 
         # Duration: round greybox window to whole hours (aivu_dynamic's
         # cadence). For a 48-hour fit window with 1-Hz telemetry, this
@@ -640,9 +790,29 @@ class RealForwardChain:
         w_main_at_obs = np.interp(obs_ns_f64, sub_ns_f64, w_main_substeps)
         t_attic_c_at_obs = np.interp(obs_ns_f64, sub_ns_f64, t_attic_c_substeps)
 
+        # Applied HVAC trace: the integrator's actually-applied per-substep
+        # commands, converted back to greybox convention and resampled to
+        # the observation grid. Q_HVAC/M_HVAC are aivu_dynamic convention
+        # (positive = removes); greybox convention is positive = added, so
+        # the sign flips — the inverse of _make_hvac_provider's conversion.
+        # Q_HVAC has one value per substep; t_hours carries substep
+        # boundaries (one extra), so its last entry is dropped to align.
+        q_hvac_dyn = np.array(dyn_result.Q_HVAC, dtype=np.float64)
+        m_hvac_dyn = np.array(dyn_result.M_HVAC, dtype=np.float64)
+        q_sens_w_sub = -q_hvac_dyn / _W_TO_BTUH
+        m_lat_sub = -m_hvac_dyn / _KG_PER_S_TO_LB_PER_HR
+        t_sub_start_hours = np.array(dyn_result.t_hours[:-1], dtype=np.float64)
+        t_sub_start_ns = (
+            t0_ns + (t_sub_start_hours * 3600.0 * 1.0e9).astype(np.int64)
+        ).astype(np.float64)
+        q_sens_w_applied = np.interp(obs_ns_f64, t_sub_start_ns, q_sens_w_sub)
+        m_lat_applied = np.interp(obs_ns_f64, t_sub_start_ns, m_lat_sub)
+
         return StateTrajectory(
             monotonic_ns=hvac.monotonic_ns,
             t_main_c=t_main_c_at_obs,
             w_main_kg_per_kg=w_main_at_obs,
             t_attic_c=t_attic_c_at_obs,
+            q_sens_w_applied=q_sens_w_applied,
+            m_lat_kg_per_s_applied=m_lat_applied,
         )
